@@ -29,7 +29,7 @@ on:
       KERNEL_NAME:
         description: "Custom kernel name"
         required: true
-        default: '-By EHSAN149'
+        default: '-By-kuan-FutabaWa'
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
