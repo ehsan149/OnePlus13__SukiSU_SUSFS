@@ -1,51 +1,51 @@
-name: 一加13和a5p构建
+name: OnePlus 13 and A5P Build
 on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "分支"
+        description: "Select compilation CPU type"
         required: true
         default: 'sm8750'
       FEIL:
         type: choice
-        description: "配置文件"
+        description: "Device configuration "
         required: true
         default: 'oneplus_13'
         options: 
          - oneplus_13
          - oneplus_ace5_pro
       CPUD:
-        description: "处理器代号"
+        description: "Processor codename"
         required: true
         default: 'sun'
       ANDROID_VERSION:
-        description: "内核安卓版本"
+        description: "Android version for kernel"
         required: true
         default: 'android15'
       KERNEL_VERSION:
-        description: "内核版本"
+        description: "Kernel version"
         required: true
         default: '6.6'
       KERNEL_NAME:
-        description: "内核名称修改(中文不行)"
+        description: "Custom kernel name"
         required: true
-        default: '-By-kuan-FutabaWa'
+        default: '-By EHSAN149'
       KERNEL_TIME:
-       description: "内核构建日期更改(默认为原厂)"
+       description: "Custom kernel build time (default: factory)"
        required: true
        default: '2024-12-17 23:36:49 UTC'
       enable_feature_x:
-       description: "是否启用kpm"
+       description: "Enable KPM support"
        required: false
        default: false
        type: boolean
       enable_feature_y:
-       description: "是否启用lz4kd"
+       description: "Enable lz4kd compression"
        required: false
        default: false
        type: boolean
       enable_feature_z:
-       description: "是否添加风驰驱动"
+       description: "Enable FengChi driver"
        required: false
        default: false
        type: boolean
