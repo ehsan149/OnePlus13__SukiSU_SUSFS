@@ -25,7 +25,7 @@ on:
       KERNEL_NAME:
         description: "Custom kernel name"
         required: true
-        default: '-By-ehsan149'
+        default: '-By-Ehsan149'
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
