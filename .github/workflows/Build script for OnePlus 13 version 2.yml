@@ -38,8 +38,14 @@ jobs:
         run: |
           mkdir -p ~/bin
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-          chmod a+x ~/bin/repo
+          chmod +x ~/bin/repo
           echo "export PATH=~/bin:$PATH" >> $GITHUB_ENV
+          # چک کردن نصب موفق
+          if [ ! -f ~/bin/repo ]; then
+            echo "Error: repo binary not found!"
+            exit 1
+          fi
+          ~/bin/repo --version || { echo "Error: repo command failed to run!"; exit 1; }
 
       - name: Initialize and sync kernel source
         run: |
