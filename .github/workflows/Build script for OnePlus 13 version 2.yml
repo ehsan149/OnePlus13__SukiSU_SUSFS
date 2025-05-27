@@ -36,16 +36,20 @@ jobs:
 
       - name: Install Repo
         run: |
-          mkdir -p ~/bin
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-          chmod +x ~/bin/repo
-          echo "export PATH=~/bin:$PATH" >> $GITHUB_ENV
-          # چک کردن نصب موفق
-          if [ ! -f ~/bin/repo ]; then
+          # استفاده از مسیر مشخص به جای ~
+          mkdir -p $HOME/bin
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $HOME/bin/repo
+          chmod +x $HOME/bin/repo
+          # تنظیم PATH به‌صورت مستقیم
+          echo "$HOME/bin" >> $GITHUB_PATH
+          # چک کردن نصب
+          if [ ! -f $HOME/bin/repo ]; then
             echo "Error: repo binary not found!"
             exit 1
           fi
-          ~/bin/repo --version || { echo "Error: repo command failed to run!"; exit 1; }
+          $HOME/bin/repo --version || { echo "Error: repo command failed to run!"; exit 1; }
+          # چک کردن PATH
+          echo "PATH after setup: $PATH"
 
       - name: Initialize and sync kernel source
         run: |
