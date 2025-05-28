@@ -62,15 +62,16 @@ jobs:
           echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE):"
           ls -la $GITHUB_WORKSPACE
 
-      # - name: Maximize build space # Temporarily commented out
-      #   uses: easimon/maximize-build-space@master
-      #   with:
-      #     root-reserve-mb: 8192
-      #     temp-reserve-mb: 2048
-      #     remove-dotnet: 'true'
-      #     remove-android: 'true'
-      #     remove-haskell: 'true'
-      #     remove-codeql: 'true'
+      # MODIFIED: Re-enabled Maximize build space
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
           
       - name: Configure Git
         run: |
@@ -178,15 +179,11 @@ jobs:
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # NEW: Explicitly disable other TCP congestion algorithms to prevent module build issues
           echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "NEW: Disabled BIC, Westwood, HTCP TCP congestion algorithms."
-
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -295,5 +292,3 @@ jobs:
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: kernel_workspace/kernel_platform/dist/Image
-
-
