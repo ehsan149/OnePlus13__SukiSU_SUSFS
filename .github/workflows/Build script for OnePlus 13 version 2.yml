@@ -54,6 +54,16 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
     steps:
+      # NEW: Added actions/checkout to ensure repository content is available
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      # NEW: Debug step to list contents of GITHUB_WORKSPACE immediately after checkout
+      - name: List GITHUB_WORKSPACE contents after checkout
+        run: |
+          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE):"
+          ls -la $GITHUB_WORKSPACE
+
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -74,7 +84,6 @@ jobs:
          sudo apt update && sudo apt upgrade -y
          sudo apt install -y python3 git curl patch
 
-      # MODIFIED: Install repo tool more robustly
       - name: Install repo tool
         run: |
          mkdir -p $GITHUB_WORKSPACE/bin
@@ -93,13 +102,12 @@ jobs:
 
       - name: Initialize repo and sync
         run: |
-         echo "Current PATH: $PATH" # DEBUG: Show current PATH
-         echo "Checking for repo tool path in GITHUB_ENV: $REPO_TOOL_PATH" # DEBUG
-         which repo || echo "WARN: 'which repo' did not find repo in PATH" # DEBUG
-         $REPO_TOOL_PATH --version || echo "WARN: Calling repo via REPO_TOOL_PATH failed" # DEBUG
+         echo "Current PATH: $PATH" 
+         echo "Checking for repo tool path in GITHUB_ENV: $REPO_TOOL_PATH" 
+         which repo || echo "WARN: 'which repo' did not find repo in PATH" 
+         $REPO_TOOL_PATH --version || echo "WARN: Calling repo via REPO_TOOL_PATH failed" 
          
          mkdir kernel_workspace && cd kernel_workspace
-         # Now 'repo' should be callable directly due to GITHUB_PATH, or use $REPO_TOOL_PATH
          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -125,12 +133,10 @@ jobs:
            cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
            cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
            cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-           #lz4k
            cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
            cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
            cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
            cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-           # Apply patches
            cd ./common
 
            sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
@@ -144,18 +150,17 @@ jobs:
       - name: Apply lz4kd Patches
         if: ${{inputs.enable_feature_y }}
         run: |
-          echo "NEW: Applying lz4kd patches if enabled..."
           cd kernel_workspace/kernel_platform/common
           cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch may not have applied cleanly."
            
       - name: Add Kernel Configuration Settings
         run: |
-          echo "NEW: Adding various kernel configurations to defconfig..."
           cd kernel_workspace/kernel_platform
           
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          # ... (rest of your defconfig additions remain the same) ...
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -204,28 +209,32 @@ jobs:
 
       - name: Apply Custom ECN and TCP Pacing Patches
         run: |
-          echo "Current directory: $(pwd)"
+          echo "Current directory: $(pwd)" # This will be GITHUB_WORKSPACE
           cd kernel_workspace/kernel_platform/common
           echo "Changed to directory: $(pwd)"
           
           echo "DEBUG: Listing contents of GITHUB_WORKSPACE (../../../):"
-          ls -la ../../../
+          ls -la ../../../ # This should show custom_patches if checkout worked
           
           echo "DEBUG: Listing contents of custom_patches directory from GITHUB_WORKSPACE:"
-          ls -la ../../../custom_patches/
+          # MODIFIED: Use absolute path GITHUB_WORKSPACE for clarity and robustness
+          ls -la $GITHUB_WORKSPACE/custom_patches/
           
           echo "Attempting to apply force_ecn.patch..."
-          cp ../../../custom_patches/force_ecn.patch ./
+          # MODIFIED: Use absolute path GITHUB_WORKSPACE for robustness
+          cp $GITHUB_WORKSPACE/custom_patches/force_ecn.patch ./
           patch -p1 --no-backup-if-mismatch < force_ecn.patch || echo "WARN: force_ecn.patch may not have applied cleanly. Check context and line numbers."
           
           echo "Attempting to apply tcp_pacing.patch..."
-          cp ../../../custom_patches/tcp_pacing.patch ./
+          # MODIFIED: Use absolute path GITHUB_WORKSPACE for robustness
+          cp $GITHUB_WORKSPACE/custom_patches/tcp_pacing.patch ./
           patch -p1 --no-backup-if-mismatch < tcp_pacing.patch || echo "WARN: tcp_pacing.patch may not have applied cleanly. Check context and line numbers."
 
       - name: Apply Hide Stuff Patch
         run: |
           cd kernel_workspace/kernel_platform/common
-          cp ../../../TheWildJames_kernel_patches/69_hide_stuff.patch ./
+          # MODIFIED: Use absolute path GITHUB_WORKSPACE for robustness
+          cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
           patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch may not have applied cleanly."
           
       - name: Add make name
@@ -264,10 +273,14 @@ jobs:
          
       - name: Prepare AnyKernel3 Zip
         run: |
+         # MODIFIED: Clone to GITHUB_WORKSPACE to avoid path issues
+         cd $GITHUB_WORKSPACE 
          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
-         cp kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+         
+         cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+         
          cd AnyKernel3_Package
          zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
          cd ..
@@ -276,6 +289,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
+         # MODIFIED: Path is now relative to GITHUB_WORKSPACE
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
          
       - name: Upload Raw Image
