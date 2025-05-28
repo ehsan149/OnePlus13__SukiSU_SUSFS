@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # تاریخ به عنوان مثال
+       default: '2024-12-17 23:36:49 UTC'
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -54,18 +54,15 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
     steps:
-      # NEW: Added actions/checkout to ensure repository content is available
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      # NEW: Debug step to list contents of GITHUB_WORKSPACE immediately after checkout
       - name: List GITHUB_WORKSPACE contents after checkout
         run: |
           echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE):"
           ls -la $GITHUB_WORKSPACE
 
-      # MODIFIED: Temporarily commented out to test if it's causing issues
-      # - name: Maximize build space
+      # - name: Maximize build space # Temporarily commented out
       #   uses: easimon/maximize-build-space@master
       #   with:
       #     root-reserve-mb: 8192
@@ -181,8 +178,15 @@ jobs:
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
+          
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          # NEW: Explicitly disable other TCP congestion algorithms to prevent module build issues
+          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "NEW: Disabled BIC, Westwood, HTCP TCP congestion algorithms."
+
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -209,12 +213,12 @@ jobs:
 
       - name: Apply Custom ECN and TCP Pacing Patches
         run: |
-          echo "Current directory: $(pwd)" # This will be GITHUB_WORKSPACE
+          echo "Current directory: $(pwd)" 
           cd kernel_workspace/kernel_platform/common
           echo "Changed to directory: $(pwd)"
           
           echo "DEBUG: Listing contents of GITHUB_WORKSPACE (../../../):"
-          ls -la ../../../ # This should show custom_patches if checkout worked and maximize-space didn't remove it
+          ls -la ../../../ 
           
           echo "DEBUG: Listing contents of custom_patches directory from GITHUB_WORKSPACE:"
           ls -la $GITHUB_WORKSPACE/custom_patches/
@@ -291,4 +295,5 @@ jobs:
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: kernel_workspace/kernel_platform/dist/Image
+
 
