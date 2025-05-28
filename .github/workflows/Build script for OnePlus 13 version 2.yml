@@ -57,12 +57,11 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: List GITHUB_WORKSPACE contents after checkout # DEBUG
+      - name: List GITHUB_WORKSPACE contents after checkout
         run: |
           echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after checkout:"
           ls -la $GITHUB_WORKSPACE
 
-      # STEP 1: Create a temporary holding area for patches BEFORE maximize-build-space
       - name: Temporarily Preserve Custom Patches
         run: |
           echo "Creating temporary holding for custom patches..."
@@ -76,7 +75,7 @@ jobs:
             exit 1
           fi
 
-      - name: Maximize build space # This might clean GITHUB_WORKSPACE/custom_patches
+      - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192 
@@ -86,7 +85,7 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: List GITHUB_WORKSPACE contents after Maximize Space # DEBUG
+      - name: List GITHUB_WORKSPACE contents after Maximize Space
         run: |
           echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after Maximize Space:"
           ls -la $GITHUB_WORKSPACE
@@ -118,7 +117,8 @@ jobs:
 
       - name: Initialize repo and sync
         run: |
-         which repo || echo "WARN: 'which repo' did not find repo in PATH" 
+         set -e # Exit immediately if a command exits with a non-zero status.
+         which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
          
          mkdir kernel_workspace && cd kernel_workspace
          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
@@ -126,10 +126,9 @@ jobs:
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
-         # STEP 2: Move preserved patches into the kernel source tree AFTER repo sync
          echo "Moving preserved patches into kernel_platform..."
          if [ -d "/tmp/my_preserved_patches" ]; then
-           mkdir -p kernel_platform/my_local_patches # Create target dir inside kernel_platform
+           mkdir -p kernel_platform/my_local_patches 
            cp -r /tmp/my_preserved_patches/* kernel_platform/my_local_patches/
            echo "Patches moved to kernel_platform/my_local_patches:"
            ls -la kernel_platform/my_local_patches
@@ -140,49 +139,101 @@ jobs:
          
       - name: Set up SukiSU
         run: |
-         cd kernel_workspace/kernel_platform
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
          cd ./KernelSU
          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
         
-      - name: Set up susfs
+      - name: Set up susfs # MODIFIED with more robust checks
         run: |
-           # Current directory: kernel_workspace/kernel_platform
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git ../susfs4ksu --depth=1 # Clone outside kernel_platform initially
-           git clone https://github.com/ShirkNeko/SukiSU_patch.git ../SukiSU_patch --depth=1 # Clone outside
+           set -e # Exit immediately if a command exits with a non-zero status.
+           echo "--- Set up susfs ---"
+           echo "Initial CWD for 'Set up susfs' step: $(pwd)"
+           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+           echo "CWD after cd to kernel_platform: $(pwd)"
 
-           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
-           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
-           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
-           cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-           cd ./common
+           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
+           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
+           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
 
-           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
-           sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
+           echo "Attempting to clone susfs4ksu (branch: ${SUSFS_BRANCH}) to ${SUSFS_CLONE_TARGET_REL}"
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
+           
+           echo "Checking existence of cloned susfs4ksu directory: ${SUSFS_CLONE_TARGET_REL} (absolute: $(realpath "${SUSFS_CLONE_TARGET_REL}") )"
+           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then
+             echo "ERROR: Directory ${SUSFS_CLONE_TARGET_REL} does not exist after clone attempt!"
+             echo "Listing contents of parent directory (../ -> $(realpath ../) ):"
+             ls -la ../
+             exit 1
+           fi
+           echo "Listing contents of ${SUSFS_CLONE_TARGET_REL}:"
+           ls -la "${SUSFS_CLONE_TARGET_REL}"
+           echo "Listing contents of ${SUSFS_CLONE_TARGET_REL}/kernel_patches/:"
+           ls -la "${SUSFS_CLONE_TARGET_REL}/kernel_patches/"
 
-           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || echo "WARN: SUSFS base patch may not have applied cleanly."
-           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./ # Path relative to common
+           echo "Attempting to clone SukiSU_patch to ${SUKISU_PATCH_CLONE_TARGET_REL}"
+           git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then
+             echo "ERROR: Directory ${SUKISU_PATCH_CLONE_TARGET_REL} does not exist after clone attempt!"
+             exit 1
+           fi
+
+           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" # Adjusted to match typical naming
+           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
+           echo "Expected patch file path: ${EXPECTED_PATCH_PATH}"
+
+           if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
+               echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+               echo "Double check the patch file name and its existence in the cloned susfs4ksu repo for branch ${SUSFS_BRANCH}."
+               exit 1
+           fi
+           
+           echo "Copying SUSFS patch ${EXPECTED_PATCH_PATH} to ./common/"
+           cp "${EXPECTED_PATCH_PATH}" ./common/
+           
+           echo "Copying other SUSFS files..."
+           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
+           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
+           
+           echo "Copying SukiSU_patch files for lz4k..."
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
+           
+           cd ./common 
+           echo "Changed directory to: $(pwd) for patching"
+
+           echo "Modifying SUSFS patch file: ${PATCH_FILE_NAME}"
+           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
+
+           echo "Applying modified SUSFS patch..."
+           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly after sed modifications."
+           
+           echo "Copying and applying SukiSU syscall_hooks.patch..."
+           # Path to SukiSU_patch is now ../../SukiSU_patch relative to common, or use absolute path
+           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
            patch -p1 -F 3 < syscall_hooks.patch
+           echo "Finished 'Set up susfs' step."
 
       - name: Apply lz4kd Patches
         if: ${{inputs.enable_feature_y }}
         run: |
-          # Current directory: kernel_workspace/kernel_platform/common
-          cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch failed."
            
       - name: Add Kernel Configuration Settings
         run: |
-          # Current directory: kernel_workspace/kernel_platform/common
-          cd .. # Go to kernel_platform
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # ... (rest of your defconfig additions) ...
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -220,26 +271,26 @@ jobs:
             echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> ./common/arch/arm64/configs/gki_defconfig
           fi
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
-
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
-          cd common # Now in kernel_workspace/kernel_platform/common
+          cd common
           git add -A && git commit -a -m "Update defconfig with SukiSU and new features" || echo "No changes to commit in common for defconfig."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
         run: |
-          # Current directory: kernel_workspace/kernel_platform/common
-          cd .. # Go to kernel_platform
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
-          cd common # Back to kernel_workspace/kernel_platform/common
+          cd common
           git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
 
       - name: Apply Custom ECN and TCP Pacing Patches
         run: |
-          # Current directory is kernel_workspace/kernel_platform/common
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           echo "Applying custom patches from ../my_local_patches/"
-          ls -la ../my_local_patches/ # DEBUG: Check if patches are here
+          ls -la ../my_local_patches/ 
 
           cp ../my_local_patches/force_ecn.patch ./
           patch -p1 --no-backup-if-mismatch < force_ecn.patch || echo "WARN: force_ecn.patch failed."
@@ -249,22 +300,22 @@ jobs:
 
       - name: Apply Hide Stuff Patch
         run: |
-          # Current directory is kernel_workspace/kernel_platform/common
-          # TheWildJames_kernel_patches was cloned to $GITHUB_WORKSPACE/TheWildJames_kernel_patches
-          # Path from common is ../../../TheWildJames_kernel_patches
-          cp ../../../TheWildJames_kernel_patches/69_hide_stuff.patch ./
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
           patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed."
           
       - name: Add make name
         run: |
-         # Current directory is kernel_workspace/kernel_platform/common
-         cd .. # Go to kernel_platform
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
          sed -i "s/^\(res=\"\${res}\)\(\$(cat \"\${file}\")\)\"$/\1\2${{ github.event.inputs.KERNEL_NAME }}\"/" ./common/scripts/setlocalversion || echo "Failed to modify setlocalversion"
 
       - name: Add sched_ext (FengChi driver)
         if: ${{inputs.enable_feature_z }}
         run: |
-         # Current directory is kernel_workspace/kernel_platform
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
          git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
          cp -r ./sched_ext_temp/* ./common/kernel/sched
          rm -rf ./sched_ext_temp
@@ -276,14 +327,15 @@ jobs:
           
       - name: Build Kernel
         run: |
-           # Current directory is kernel_workspace/kernel_platform
+           set -e
+           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
            tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
 
       - name: Make AnyKernel3 (Patch Image)
         run: |
-         # Current directory is kernel_workspace/kernel_platform
-         cd dist/
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -292,7 +344,7 @@ jobs:
          
       - name: Prepare AnyKernel3 Zip
         run: |
-         # Current directory is kernel_workspace/kernel_platform/dist
+         set -e
          cd $GITHUB_WORKSPACE 
          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
