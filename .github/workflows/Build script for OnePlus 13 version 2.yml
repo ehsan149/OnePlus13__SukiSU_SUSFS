@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC'
+       default: '2024-12-17 23:36:49 UTC' # تاریخ به عنوان مثال
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -64,15 +64,16 @@ jobs:
           echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE):"
           ls -la $GITHUB_WORKSPACE
 
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
+      # MODIFIED: Temporarily commented out to test if it's causing issues
+      # - name: Maximize build space
+      #   uses: easimon/maximize-build-space@master
+      #   with:
+      #     root-reserve-mb: 8192
+      #     temp-reserve-mb: 2048
+      #     remove-dotnet: 'true'
+      #     remove-android: 'true'
+      #     remove-haskell: 'true'
+      #     remove-codeql: 'true'
           
       - name: Configure Git
         run: |
@@ -160,7 +161,6 @@ jobs:
           
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          # ... (rest of your defconfig additions remain the same) ...
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -214,26 +214,22 @@ jobs:
           echo "Changed to directory: $(pwd)"
           
           echo "DEBUG: Listing contents of GITHUB_WORKSPACE (../../../):"
-          ls -la ../../../ # This should show custom_patches if checkout worked
+          ls -la ../../../ # This should show custom_patches if checkout worked and maximize-space didn't remove it
           
           echo "DEBUG: Listing contents of custom_patches directory from GITHUB_WORKSPACE:"
-          # MODIFIED: Use absolute path GITHUB_WORKSPACE for clarity and robustness
           ls -la $GITHUB_WORKSPACE/custom_patches/
           
           echo "Attempting to apply force_ecn.patch..."
-          # MODIFIED: Use absolute path GITHUB_WORKSPACE for robustness
           cp $GITHUB_WORKSPACE/custom_patches/force_ecn.patch ./
           patch -p1 --no-backup-if-mismatch < force_ecn.patch || echo "WARN: force_ecn.patch may not have applied cleanly. Check context and line numbers."
           
           echo "Attempting to apply tcp_pacing.patch..."
-          # MODIFIED: Use absolute path GITHUB_WORKSPACE for robustness
           cp $GITHUB_WORKSPACE/custom_patches/tcp_pacing.patch ./
           patch -p1 --no-backup-if-mismatch < tcp_pacing.patch || echo "WARN: tcp_pacing.patch may not have applied cleanly. Check context and line numbers."
 
       - name: Apply Hide Stuff Patch
         run: |
           cd kernel_workspace/kernel_platform/common
-          # MODIFIED: Use absolute path GITHUB_WORKSPACE for robustness
           cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
           patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch may not have applied cleanly."
           
@@ -273,7 +269,6 @@ jobs:
          
       - name: Prepare AnyKernel3 Zip
         run: |
-         # MODIFIED: Clone to GITHUB_WORKSPACE to avoid path issues
          cd $GITHUB_WORKSPACE 
          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
@@ -289,7 +284,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
-         # MODIFIED: Path is now relative to GITHUB_WORKSPACE
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
          
       - name: Upload Raw Image
@@ -297,3 +291,4 @@ jobs:
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: kernel_workspace/kernel_platform/dist/Image
+
