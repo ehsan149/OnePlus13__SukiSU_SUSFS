@@ -1,0 +1,13 @@
+--- a/net/ipv4/tcp_ipv4.c
++++ b/net/ipv4/tcp_ipv4.c
+@@ -3695,8 +3695,8 @@
+ 	icsk->icsk_rto = TCP_TIMEOUT_INIT;
+ 	icsk->icsk_syn_retries = net->ipv4.sysctl_tcp_syn_retries;
+
+-	net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;
+-	net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;
++	net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;
++	net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;
+
+ 	/* Initialize from current sysctl settings */
+ 	tp->ecn_flags = net->ipv4.sysctl_tcp_ecn;

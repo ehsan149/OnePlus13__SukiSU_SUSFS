@@ -1,0 +1,12 @@
+--- a/net/ipv4/tcp_ipv4.c
++++ b/net/ipv4/tcp_ipv4.c
+@@ -3712,7 +3712,7 @@
+ 		WRITE_ONCE(net->ipv4.sysctl_tcp_ecn_fallback, 1);
+ #else
+ 		WRITE_ONCE(net->ipv4.sysctl_tcp_ecn_fallback, 0);
+ #endif
+-		net->ipv4.sysctl_tcp_ecn = 2; /* ECN_INIT_Enable */
++		net->ipv4.sysctl_tcp_ecn = 1; /* ECN_INIT_Enable by default */
+ 		net->ipv4.sysctl_tcp_reordering = 3;
+ 		net->ipv4.sysctl_tcp_dsack = 1;
+ 		net->ipv4.sysctl_tcp_app_win = 31;
