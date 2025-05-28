@@ -41,7 +41,7 @@ on:
        default: false
        type: boolean
       enable_feature_z:
-       description: "Enable FengChi driver (sched_ext)" # NEW: Clarified what this feature is
+       description: "Enable FengChi driver (sched_ext)"
        required: false
        default: false
        type: boolean
@@ -73,12 +73,6 @@ jobs:
         run: |
          sudo apt update && sudo apt upgrade -y
          sudo apt install -y python3 git curl patch # NEW: Added 'patch' explicitly
-
-      - name: Install repo tool
-        run: |
-         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-         chmod a+x ~/repo
-         sudo mv ~/repo /usr/local/bin/repo
 
       # NEW STEP: Clone repository for "Hide Stuff" patches
       - name: Clone TheWildJames Patches Repo
@@ -215,13 +209,18 @@ jobs:
           cd common
           git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
 
-      # NEW STEP: Apply custom ECN and TCP Pacing patches
-      # IMPORTANT: You need to create these patch files in your repository, for example, in a folder named 'custom_patches'.
-      # See the accompanying text for the content of 'force_ecn.patch' and 'tcp_pacing.patch'.
       - name: Apply Custom ECN and TCP Pacing Patches
         run: |
           echo "NEW: Applying custom ECN and TCP Pacing patches..."
+          echo "Current directory: $(pwd)"
           cd kernel_workspace/kernel_platform/common
+          echo "Changed to directory: $(pwd)"
+          
+          echo "DEBUG: Listing contents of GITHUB_WORKSPACE (../../../):"
+          ls -la ../../../
+          
+          echo "DEBUG: Listing contents of custom_patches directory from GITHUB_WORKSPACE:"
+          ls -la ../../../custom_patches/
           
           echo "Attempting to apply force_ecn.patch..."
           # Assuming force_ecn.patch is in a 'custom_patches' dir at the root of your repo
@@ -233,7 +232,6 @@ jobs:
           cp ../../../custom_patches/tcp_pacing.patch ./
           patch -p1 --no-backup-if-mismatch < tcp_pacing.patch || echo "WARN: tcp_pacing.patch may not have applied cleanly. Check context and line numbers."
 
-      # NEW STEP: Apply Hide Stuff Patches
       - name: Apply Hide Stuff Patch
         run: |
           echo "NEW: Applying Hide Stuff patch..."
