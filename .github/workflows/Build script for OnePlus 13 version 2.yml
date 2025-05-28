@@ -1,4 +1,4 @@
-name: OnePlus 13 Build 
+name: Build script for OnePlus 13 
 on:
   workflow_dispatch:
     inputs:
