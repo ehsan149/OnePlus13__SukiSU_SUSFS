@@ -57,21 +57,41 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: List GITHUB_WORKSPACE contents after checkout
+      - name: List GITHUB_WORKSPACE contents after checkout # DEBUG
         run: |
-          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE):"
+          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after checkout:"
           ls -la $GITHUB_WORKSPACE
 
-      # MODIFIED: Re-enabled Maximize build space
-      - name: Maximize build space
+      # STEP 1: Create a temporary holding area for patches BEFORE maximize-build-space
+      - name: Temporarily Preserve Custom Patches
+        run: |
+          echo "Creating temporary holding for custom patches..."
+          if [ -d "$GITHUB_WORKSPACE/custom_patches" ]; then
+            mkdir -p /tmp/my_preserved_patches
+            cp -r $GITHUB_WORKSPACE/custom_patches/* /tmp/my_preserved_patches/
+            echo "Custom patches temporarily preserved in /tmp/my_preserved_patches:"
+            ls -la /tmp/my_preserved_patches
+          else
+            echo "ERROR: $GITHUB_WORKSPACE/custom_patches directory not found after checkout!"
+            exit 1
+          fi
+
+      - name: Maximize build space # This might clean GITHUB_WORKSPACE/custom_patches
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
+          root-reserve-mb: 8192 
+          temp-reserve-mb: 2048 
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
+
+      - name: List GITHUB_WORKSPACE contents after Maximize Space # DEBUG
+        run: |
+          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after Maximize Space:"
+          ls -la $GITHUB_WORKSPACE
+          echo "Checking if /tmp/my_preserved_patches still exists:"
+          ls -la /tmp/my_preserved_patches || echo "/tmp/my_preserved_patches not found (this is unexpected)"
           
       - name: Configure Git
         run: |
@@ -90,27 +110,33 @@ jobs:
          chmod a+x $GITHUB_WORKSPACE/bin/repo
          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
          echo "REPO_TOOL_PATH=$GITHUB_WORKSPACE/bin/repo" >> $GITHUB_ENV
-         echo "Repo tool installed at $GITHUB_WORKSPACE/bin/repo and added to PATH"
-         echo "Verifying repo command:"
          repo --version || echo "WARN: repo --version failed after installation attempt."
 
       - name: Clone TheWildJames Patches Repo
         run: |
           git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
-          echo "NEW: Cloned TheWildJames/kernel_patches for Hide Stuff patch"
 
       - name: Initialize repo and sync
         run: |
-         echo "Current PATH: $PATH" 
-         echo "Checking for repo tool path in GITHUB_ENV: $REPO_TOOL_PATH" 
          which repo || echo "WARN: 'which repo' did not find repo in PATH" 
-         $REPO_TOOL_PATH --version || echo "WARN: Calling repo via REPO_TOOL_PATH failed" 
          
          mkdir kernel_workspace && cd kernel_workspace
          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+
+         # STEP 2: Move preserved patches into the kernel source tree AFTER repo sync
+         echo "Moving preserved patches into kernel_platform..."
+         if [ -d "/tmp/my_preserved_patches" ]; then
+           mkdir -p kernel_platform/my_local_patches # Create target dir inside kernel_platform
+           cp -r /tmp/my_preserved_patches/* kernel_platform/my_local_patches/
+           echo "Patches moved to kernel_platform/my_local_patches:"
+           ls -la kernel_platform/my_local_patches
+         else
+           echo "ERROR: /tmp/my_preserved_patches not found! Cannot move patches."
+           exit 1
+         fi
          
       - name: Set up SukiSU
         run: |
@@ -119,16 +145,14 @@ jobs:
          cd ./KernelSU
          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         export KSU_VERSION=$KSU_VERSION
          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
         
       - name: Set up susfs
         run: |
-           cd kernel_workspace
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }} --depth=1
-           git clone https://github.com/ShirkNeko/SukiSU_patch.git --depth=1
+           # Current directory: kernel_workspace/kernel_platform
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git ../susfs4ksu --depth=1 # Clone outside kernel_platform initially
+           git clone https://github.com/ShirkNeko/SukiSU_patch.git ../SukiSU_patch --depth=1 # Clone outside
 
-           cd kernel_platform        
            cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
            cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
            cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
@@ -141,23 +165,24 @@ jobs:
            sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
            sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
 
-           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || echo "WARN: SUSFS base patch may not have applied cleanly after sed modifications."
-           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
+           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || echo "WARN: SUSFS base patch may not have applied cleanly."
+           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./ # Path relative to common
            patch -p1 -F 3 < syscall_hooks.patch
-           echo "مرحله تنظیمات SUSFS و پچ‌های اولیه SukiSU انجام شد"
 
       - name: Apply lz4kd Patches
         if: ${{inputs.enable_feature_y }}
         run: |
-          cd kernel_workspace/kernel_platform/common
+          # Current directory: kernel_workspace/kernel_platform/common
           cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
-          patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch may not have applied cleanly."
+          patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch failed."
            
       - name: Add Kernel Configuration Settings
         run: |
-          cd kernel_workspace/kernel_platform
+          # Current directory: kernel_workspace/kernel_platform/common
+          cd .. # Go to kernel_platform
           
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          # ... (rest of your defconfig additions) ...
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -195,58 +220,54 @@ jobs:
             echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> ./common/arch/arm64/configs/gki_defconfig
           fi
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
+
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
-          cd common
+          cd common # Now in kernel_workspace/kernel_platform/common
           git add -A && git commit -a -m "Update defconfig with SukiSU and new features" || echo "No changes to commit in common for defconfig."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
         run: |
-          cd kernel_workspace/kernel_platform
+          # Current directory: kernel_workspace/kernel_platform/common
+          cd .. # Go to kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
-          cd common
+          cd common # Back to kernel_workspace/kernel_platform/common
           git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
 
       - name: Apply Custom ECN and TCP Pacing Patches
         run: |
-          echo "Current directory: $(pwd)" 
-          cd kernel_workspace/kernel_platform/common
-          echo "Changed to directory: $(pwd)"
+          # Current directory is kernel_workspace/kernel_platform/common
+          echo "Applying custom patches from ../my_local_patches/"
+          ls -la ../my_local_patches/ # DEBUG: Check if patches are here
+
+          cp ../my_local_patches/force_ecn.patch ./
+          patch -p1 --no-backup-if-mismatch < force_ecn.patch || echo "WARN: force_ecn.patch failed."
           
-          echo "DEBUG: Listing contents of GITHUB_WORKSPACE (../../../):"
-          ls -la ../../../ 
-          
-          echo "DEBUG: Listing contents of custom_patches directory from GITHUB_WORKSPACE:"
-          ls -la $GITHUB_WORKSPACE/custom_patches/
-          
-          echo "Attempting to apply force_ecn.patch..."
-          cp $GITHUB_WORKSPACE/custom_patches/force_ecn.patch ./
-          patch -p1 --no-backup-if-mismatch < force_ecn.patch || echo "WARN: force_ecn.patch may not have applied cleanly. Check context and line numbers."
-          
-          echo "Attempting to apply tcp_pacing.patch..."
-          cp $GITHUB_WORKSPACE/custom_patches/tcp_pacing.patch ./
-          patch -p1 --no-backup-if-mismatch < tcp_pacing.patch || echo "WARN: tcp_pacing.patch may not have applied cleanly. Check context and line numbers."
+          cp ../my_local_patches/tcp_pacing.patch ./
+          patch -p1 --no-backup-if-mismatch < tcp_pacing.patch || echo "WARN: tcp_pacing.patch failed."
 
       - name: Apply Hide Stuff Patch
         run: |
-          cd kernel_workspace/kernel_platform/common
-          cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch may not have applied cleanly."
+          # Current directory is kernel_workspace/kernel_platform/common
+          # TheWildJames_kernel_patches was cloned to $GITHUB_WORKSPACE/TheWildJames_kernel_patches
+          # Path from common is ../../../TheWildJames_kernel_patches
+          cp ../../../TheWildJames_kernel_patches/69_hide_stuff.patch ./
+          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed."
           
       - name: Add make name
         run: |
-         cd kernel_workspace/kernel_platform
-         sed -i "s/^\(res=\"\${res}\)\(\$(cat \"\${file}\")\)\"$/\1\2${{ github.event.inputs.KERNEL_NAME }}\"/" ./common/scripts/setlocalversion || echo "Failed to modify setlocalversion for KERNEL_NAME"
+         # Current directory is kernel_workspace/kernel_platform/common
+         cd .. # Go to kernel_platform
+         sed -i "s/^\(res=\"\${res}\)\(\$(cat \"\${file}\")\)\"$/\1\2${{ github.event.inputs.KERNEL_NAME }}\"/" ./common/scripts/setlocalversion || echo "Failed to modify setlocalversion"
 
       - name: Add sched_ext (FengChi driver)
         if: ${{inputs.enable_feature_z }}
         run: |
-         cd kernel_workspace/kernel_platform/
-         git clone https://github.com/HanKuCha/sched_ext.git --depth=1
-         cp -r ./sched_ext/* ./common/kernel/sched
-         rm -rf ./sched_ext/.git
-         cd common/kernel/sched
+         # Current directory is kernel_workspace/kernel_platform
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
          
       - name: Set Kernel build timestamp
         run: |
@@ -255,13 +276,14 @@ jobs:
           
       - name: Build Kernel
         run: |
+           # Current directory is kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
-           cd kernel_workspace/kernel_platform
            tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
 
       - name: Make AnyKernel3 (Patch Image)
         run: |
-         cd kernel_workspace/kernel_platform/dist/
+         # Current directory is kernel_workspace/kernel_platform
+         cd dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -270,6 +292,7 @@ jobs:
          
       - name: Prepare AnyKernel3 Zip
         run: |
+         # Current directory is kernel_workspace/kernel_platform/dist
          cd $GITHUB_WORKSPACE 
          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
