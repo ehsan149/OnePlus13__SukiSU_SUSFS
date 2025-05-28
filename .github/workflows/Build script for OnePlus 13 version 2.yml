@@ -117,7 +117,7 @@ jobs:
 
       - name: Initialize repo and sync
         run: |
-         set -e # Exit immediately if a command exits with a non-zero status.
+         set -e 
          which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
          
          mkdir kernel_workspace && cd kernel_workspace
@@ -147,9 +147,9 @@ jobs:
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
         
-      - name: Set up susfs # MODIFIED with more robust checks
+      - name: Set up susfs
         run: |
-           set -e # Exit immediately if a command exits with a non-zero status.
+           set -e 
            echo "--- Set up susfs ---"
            echo "Initial CWD for 'Set up susfs' step: $(pwd)"
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
@@ -181,7 +181,7 @@ jobs:
              exit 1
            fi
 
-           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" # Adjusted to match typical naming
+           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
            EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
            echo "Expected patch file path: ${EXPECTED_PATCH_PATH}"
 
@@ -215,7 +215,6 @@ jobs:
            patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly after sed modifications."
            
            echo "Copying and applying SukiSU syscall_hooks.patch..."
-           # Path to SukiSU_patch is now ../../SukiSU_patch relative to common, or use absolute path
            cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
            patch -p1 -F 3 < syscall_hooks.patch
            echo "Finished 'Set up susfs' step."
@@ -284,6 +283,22 @@ jobs:
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
+
+      # NEW STEP: Display relevant section of tcp_ipv4.c before applying custom patches
+      - name: Display ECN/TCP Pacing relevant code from tcp_ipv4.c
+        run: |
+          set -e
+          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          if [ -f "$TCP_IPV4_PATH" ]; then
+            echo "--- Relevant section from $TCP_IPV4_PATH for ECN patch ---"
+            grep -C 7 "sysctl_tcp_ecn *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_ecn =' not found or grep failed."
+            echo "--- Relevant section from $TCP_IPV4_PATH for TCP Pacing patch ---"
+            grep -C 7 "sysctl_tcp_pacing_ss_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ss_ratio =' not found or grep failed."
+            grep -C 7 "sysctl_tcp_pacing_ca_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ca_ratio =' not found or grep failed."
+          else
+            echo "ERROR: $TCP_IPV4_PATH not found!"
+            exit 1
+          fi
 
       - name: Apply Custom ECN and TCP Pacing Patches
         run: |
