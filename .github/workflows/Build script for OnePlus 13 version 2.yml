@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # تاریخ به عنوان مثال
+       default: '2024-12-17 23:36:49 UTC'
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -56,12 +56,6 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-
-      - name: List GITHUB_WORKSPACE contents after checkout
-        run: |
-          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after checkout:"
-          ls -la $GITHUB_WORKSPACE
-          # پوشه custom_patches دیگر برای ECN/Pacing با استفاده از sed ضروری نیست
 
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -167,7 +161,6 @@ jobs:
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch failed."
       
-      # مرحله جدید: اعمال تغییرات ECN و TCP Pacing با استفاده از SED
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
@@ -179,16 +172,11 @@ jobs:
             exit 1
           fi
 
-          # ECN Tweak
-          # دقیقا همان خطی که در خروجی grep شما بود را هدف قرار می‌دهد
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           echo "ECN tweak applied (or sed found no match)."
           echo "Verifying ECN tweak:"
           grep "sysctl_tcp_ecn *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_ecn =' not found after ECN sed."
 
-
-          # TCP Pacing Tweaks
-          # دقیقا همان خطوطی که در خروجی grep شما بودند را هدف قرار می‌دهد
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
           echo "TCP Pacing tweaks applied (or sed found no match)."
@@ -233,7 +221,7 @@ jobs:
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig # ECN support in defconfig
+          echo "CONFIG_IP_NF_TARGET_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> ./common/arch/arm64/configs/gki_defconfig
@@ -256,13 +244,40 @@ jobs:
           cd common
           git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
 
+      # NEW STEP: Display Hunk #4 of original 69_hide_stuff.patch
+      - name: Display Original Hide Stuff Patch (Hunk 4 for task_mmu.c)
+        run: |
+          set -e
+          echo "--- Hunk #4 from original 69_hide_stuff.patch (for fs/proc/task_mmu.c) ---"
+          # This command extracts the relevant hunk. It assumes the hunk starts after "@@ -484,10 +484,18 @@"
+          # and targets fs/proc/task_mmu.c. This might need adjustment if the patch structure is different.
+          # A simpler approach is to cat the whole patch if this is too complex.
+          # For now, let's try to be specific.
+          # We need to find the hunk that modifies task_mmu.c and is likely Hunk #4
+          # The original patch has multiple file changes.
+          echo "Displaying the whole 69_hide_stuff.patch for manual inspection of Hunk #4 for task_mmu.c:"
+          cat $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch
+
       - name: Apply Hide Stuff Patch
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          # TheWildJames_kernel_patches was cloned to $GITHUB_WORKSPACE/TheWildJames_kernel_patches
           cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed."
+          echo "--- Applying 69_hide_stuff.patch ---"
+          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
+          
+      # NEW STEP: Display relevant section of task_mmu.c AFTER applying hide_stuff_patch
+      - name: Display task_mmu.c after Hide Stuff Patch
+        run: |
+          set -e
+          TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
+          if [ -f "$TASK_MMU_PATH" ]; then
+            echo "--- Relevant section from $TASK_MMU_PATH AFTER Hide Stuff patch (around line 342 from previous fuzzy log) ---"
+            # We'll show a broader context, e.g., lines 300-400, adjust if needed
+            sed -n '300,400p' "$TASK_MMU_PATH" || echo "INFO: Could not display section of task_mmu.c"
+          else
+            echo "ERROR: $TASK_MMU_PATH not found after patching!"
+          fi
           
       - name: Add make name
         run: |
