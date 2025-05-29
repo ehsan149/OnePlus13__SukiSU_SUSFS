@@ -23,9 +23,9 @@ on:
         required: true
         default: '6.6'
       KERNEL_NAME:
-        description: "Custom kernel name"
+        description: "Custom kernel name (e.g., -By-Ehsan149-4k)" 
         required: true
-        default: '-By-Ehsan149'
+        default: '-By-Ehsan149-4k' 
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
@@ -106,9 +106,9 @@ jobs:
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
          cd ./KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
+         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
         
       - name: Set up susfs
         run: |
@@ -163,29 +163,20 @@ jobs:
         run: |
           set -e
           TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
-          echo "Applying ECN and TCP Pacing tweaks to $TCP_IPV4_PATH using sed..."
-
-          if [ ! -f "$TCP_IPV4_PATH" ]; then
-            echo "ERROR: $TCP_IPV4_PATH not found!"
-            exit 1
-          fi
+          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
 
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
           echo "ECN and TCP Pacing tweaks applied."
-          echo "Verifying ECN and TCP Pacing tweaks (values should be 1, 150, 110):"
-          grep "sysctl_tcp_ecn *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_ecn =' not found after ECN sed."
-          grep "sysctl_tcp_pacing_ss_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ss_ratio =' not found."
-          grep "sysctl_tcp_pacing_ca_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ca_ratio =' not found."
           
-      - name: Add Kernel Configuration Settings
+      - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
+          # Defconfig additions
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # ... (تمام خطوط echo "CONFIG_..." شما از این بخش تا انتها بدون تغییر باقی می‌مانند) ...
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -224,9 +215,16 @@ jobs:
           fi
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
 
+          # Kernel Name defconfig settings
+          echo "Modifying defconfig for custom kernel name..."
+          sed -i '/CONFIG_LOCALVERSION_AUTO/d' ./common/arch/arm64/configs/gki_defconfig 
+          sed -i '/CONFIG_LOCALVERSION=/d' ./common/arch/arm64/configs/gki_defconfig 
+          echo "CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\"" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\""
+
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -a -m "Update defconfig with SukiSU and new features" || echo "No changes to commit in common for defconfig."
+          git add -A && git commit -a -m "Update defconfig with all features and precise custom kernel name" || echo "No defconfig changes to commit."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
@@ -236,7 +234,7 @@ jobs:
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
+          git add -A && git commit -a -m "Add KPM config" || echo "No KPM changes to commit."
 
       # NEW STEP: Display task_mmu.c BEFORE applying Hide Stuff patch
       - name: Display task_mmu.c BEFORE Hide Stuff Patch
@@ -245,12 +243,11 @@ jobs:
           TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
           if [ -f "$TASK_MMU_PATH" ]; then
             echo "--- Content of $TASK_MMU_PATH BEFORE Hide Stuff patch (around Hunk #4 target area) ---"
-            # Hunk #4 in 69_hide_stuff.patch for task_mmu.c targets lines around 442-449 in the original file it was based on.
+            # Hunk #4 in 69_hide_stuff.patch for task_mmu.c targets lines around 449 in the original file it was based on.
             # Due to offsets, this might be around line 300-400 in your file. Let's print a wider range.
-            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH"
+            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH" 
             sed -n '250,550p' "$TASK_MMU_PATH" || echo "INFO: Could not display full desired section of task_mmu.c with sed."
             echo "--- End of section ---"
-            echo "If the relevant section is not visible, the line numbers in sed might need adjustment, or we can cat the whole file."
           else
             echo "ERROR: $TASK_MMU_PATH not found!"
           fi
@@ -282,19 +279,15 @@ jobs:
           if [ -f "$TASK_MMU_PATH" ]; then
             echo "--- Content of $TASK_MMU_PATH AFTER Hide Stuff patch (around Hunk #4 target area) ---"
             # Show the same wider range as before
-            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH"
+            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH" 
             sed -n '250,550p' "$TASK_MMU_PATH" || echo "INFO: Could not display full desired section of task_mmu.c with sed."
             echo "--- End of section ---"
           else
             echo "ERROR: $TASK_MMU_PATH not found after patching!"
           fi
           
-      - name: Add make name
-        run: |
-         set -e
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-         sed -i "s/^\(res=\"\${res}\)\(\$(cat \"\${file}\")\)\"$/\1\2${{ github.event.inputs.KERNEL_NAME }}\"/" ./common/scripts/setlocalversion || echo "Failed to modify setlocalversion"
-
+      # REMOVED: Old "Add make name" or "Add Custom Kernel Suffix" step. Naming is now handled by defconfig.
+         
       - name: Add sched_ext (FengChi driver)
         if: ${{inputs.enable_feature_z }}
         run: |
