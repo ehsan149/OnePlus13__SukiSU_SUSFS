@@ -143,8 +143,8 @@ jobs:
            
            cd ./common 
 
-           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}" # Your custom sed modification
-           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}" # Your custom sed modification
+           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
 
            patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
            cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
@@ -185,6 +185,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          # ... (تمام خطوط echo "CONFIG_..." شما از این بخش تا انتها بدون تغییر باقی می‌مانند) ...
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -239,23 +240,23 @@ jobs:
 
       # NEW STEP: Display task_mmu.c BEFORE applying Hide Stuff patch
       - name: Display task_mmu.c BEFORE Hide Stuff Patch
-        id: display_task_mmu_before
         run: |
           set -e
           TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
           if [ -f "$TASK_MMU_PATH" ]; then
-            echo "--- Content of $TASK_MMU_PATH BEFORE Hide Stuff patch (around Hunk #4 target) ---"
-            # Hunk #4 in 69_hide_stuff.patch for task_mmu.c starts with @@ -442,6 +460,23 @@
-            # Let's show a range like 430 to 470 to get good context
-            sed -n '430,490p' "$TASK_MMU_PATH" 
+            echo "--- Content of $TASK_MMU_PATH BEFORE Hide Stuff patch (around Hunk #4 target area) ---"
+            # Hunk #4 in 69_hide_stuff.patch for task_mmu.c targets lines around 442-449 in the original file it was based on.
+            # Due to offsets, this might be around line 300-400 in your file. Let's print a wider range.
+            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH"
+            sed -n '250,550p' "$TASK_MMU_PATH" || echo "INFO: Could not display full desired section of task_mmu.c with sed."
+            echo "--- End of section ---"
+            echo "If the relevant section is not visible, the line numbers in sed might need adjustment, or we can cat the whole file."
           else
             echo "ERROR: $TASK_MMU_PATH not found!"
-            # exit 1 # Do not exit, let the build try to continue or fail at patch step
           fi
 
       # NEW STEP: Display original 69_hide_stuff.patch content
       - name: Display Original 69_hide_stuff.patch Content
-        id: display_original_hide_patch
         run: |
           set -e
           echo "--- Content of original 69_hide_stuff.patch ---"
@@ -267,7 +268,6 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
           echo "--- Applying 69_hide_stuff.patch ---"
-          # Attempt to apply with --dry-run first to see potential issues without changing files
           echo "--- Dry-run output for 69_hide_stuff.patch ---"
           patch -p1 --dry-run --no-backup-if-mismatch < 69_hide_stuff.patch || echo "INFO: Dry-run of 69_hide_stuff.patch indicated issues or completed with non-zero exit."
           
@@ -276,14 +276,15 @@ jobs:
           
       # NEW STEP: Display task_mmu.c AFTER applying Hide Stuff patch
       - name: Display task_mmu.c AFTER Hide Stuff Patch
-        id: display_task_mmu_after
         run: |
           set -e
           TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
           if [ -f "$TASK_MMU_PATH" ]; then
             echo "--- Content of $TASK_MMU_PATH AFTER Hide Stuff patch (around Hunk #4 target area) ---"
-            # Show the same range as before, or a bit more to see changes
-            sed -n '430,500p' "$TASK_MMU_PATH"
+            # Show the same wider range as before
+            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH"
+            sed -n '250,550p' "$TASK_MMU_PATH" || echo "INFO: Could not display full desired section of task_mmu.c with sed."
+            echo "--- End of section ---"
           else
             echo "ERROR: $TASK_MMU_PATH not found after patching!"
           fi
