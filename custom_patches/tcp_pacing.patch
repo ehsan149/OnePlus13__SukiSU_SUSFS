@@ -11,3 +11,4 @@
  	if (net != &init_net) {
  		memcpy(net->ipv4.sysctl_tcp_rmem,
  		       init_net.ipv4.sysctl_tcp_rmem,
++		       sizeof(init_net.ipv4.sysctl_tcp_rmem));

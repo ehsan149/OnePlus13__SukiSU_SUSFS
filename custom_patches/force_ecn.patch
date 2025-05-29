@@ -1,7 +1,6 @@
 --- a/net/ipv4/tcp_ipv4.c
 +++ b/net/ipv4/tcp_ipv4.c
-@@ -27,9 +27,9 @@
- 
+@@ -27,6 +27,6 @@
  static int __net_init tcp_sk_init(struct net *net)
  {
 -	net->ipv4.sysctl_tcp_ecn = 2;
