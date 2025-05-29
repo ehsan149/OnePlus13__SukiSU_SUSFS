@@ -168,7 +168,7 @@ jobs:
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
-          echo "ECN and TCP Pacing tweaks applied."
+          echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
@@ -215,7 +215,7 @@ jobs:
           fi
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # Kernel Name defconfig settings
+          # Kernel Name defconfig settings - For precise kernel name
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' ./common/arch/arm64/configs/gki_defconfig 
           sed -i '/CONFIG_LOCALVERSION=/d' ./common/arch/arm64/configs/gki_defconfig 
@@ -236,58 +236,13 @@ jobs:
           cd common
           git add -A && git commit -a -m "Add KPM config" || echo "No KPM changes to commit."
 
-      # NEW STEP: Display task_mmu.c BEFORE applying Hide Stuff patch
-      - name: Display task_mmu.c BEFORE Hide Stuff Patch
-        run: |
-          set -e
-          TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
-          if [ -f "$TASK_MMU_PATH" ]; then
-            echo "--- Content of $TASK_MMU_PATH BEFORE Hide Stuff patch (around Hunk #4 target area) ---"
-            # Hunk #4 in 69_hide_stuff.patch for task_mmu.c targets lines around 449 in the original file it was based on.
-            # Due to offsets, this might be around line 300-400 in your file. Let's print a wider range.
-            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH" 
-            sed -n '250,550p' "$TASK_MMU_PATH" || echo "INFO: Could not display full desired section of task_mmu.c with sed."
-            echo "--- End of section ---"
-          else
-            echo "ERROR: $TASK_MMU_PATH not found!"
-          fi
-
-      # NEW STEP: Display original 69_hide_stuff.patch content
-      - name: Display Original 69_hide_stuff.patch Content
-        run: |
-          set -e
-          echo "--- Content of original 69_hide_stuff.patch ---"
-          cat $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch
-
       - name: Apply Hide Stuff Patch
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-          echo "--- Applying 69_hide_stuff.patch ---"
-          echo "--- Dry-run output for 69_hide_stuff.patch ---"
-          patch -p1 --dry-run --no-backup-if-mismatch < 69_hide_stuff.patch || echo "INFO: Dry-run of 69_hide_stuff.patch indicated issues or completed with non-zero exit."
-          
-          echo "--- Actual application of 69_hide_stuff.patch ---"
           patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
-          
-      # NEW STEP: Display task_mmu.c AFTER applying Hide Stuff patch
-      - name: Display task_mmu.c AFTER Hide Stuff Patch
-        run: |
-          set -e
-          TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
-          if [ -f "$TASK_MMU_PATH" ]; then
-            echo "--- Content of $TASK_MMU_PATH AFTER Hide Stuff patch (around Hunk #4 target area) ---"
-            # Show the same wider range as before
-            echo "Attempting to print lines 250-550 of $TASK_MMU_PATH" 
-            sed -n '250,550p' "$TASK_MMU_PATH" || echo "INFO: Could not display full desired section of task_mmu.c with sed."
-            echo "--- End of section ---"
-          else
-            echo "ERROR: $TASK_MMU_PATH not found after patching!"
-          fi
-          
-      # REMOVED: Old "Add make name" or "Add Custom Kernel Suffix" step. Naming is now handled by defconfig.
-         
+                 
       - name: Add sched_ext (FengChi driver)
         if: ${{inputs.enable_feature_z }}
         run: |
