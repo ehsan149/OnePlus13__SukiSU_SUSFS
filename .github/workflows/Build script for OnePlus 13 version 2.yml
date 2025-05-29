@@ -83,7 +83,6 @@ jobs:
          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
          chmod a+x $GITHUB_WORKSPACE/bin/repo
          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-         echo "REPO_TOOL_PATH=$GITHUB_WORKSPACE/bin/repo" >> $GITHUB_ENV
          repo --version || echo "WARN: repo --version failed after installation attempt."
 
       - name: Clone TheWildJames Patches Repo
@@ -114,7 +113,6 @@ jobs:
       - name: Set up susfs
         run: |
            set -e 
-           echo "--- Set up susfs ---"
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
 
            SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
@@ -145,8 +143,8 @@ jobs:
            
            cd ./common 
 
-           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
+           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}" # Your custom sed modification
+           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}" # Your custom sed modification
 
            patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
            cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
@@ -173,19 +171,14 @@ jobs:
           fi
 
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
-          echo "ECN tweak applied (or sed found no match)."
-          echo "Verifying ECN tweak:"
-          grep "sysctl_tcp_ecn *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_ecn =' not found after ECN sed."
-
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
-          echo "TCP Pacing tweaks applied (or sed found no match)."
-          echo "Verifying TCP Pacing tweaks:"
-          grep "sysctl_tcp_pacing_ss_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ss_ratio =' not found after Pacing sed."
-          grep "sysctl_tcp_pacing_ca_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ca_ratio =' not found after Pacing sed."
+          echo "ECN and TCP Pacing tweaks applied."
+          echo "Verifying ECN and TCP Pacing tweaks (values should be 1, 150, 110):"
+          grep "sysctl_tcp_ecn *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_ecn =' not found after ECN sed."
+          grep "sysctl_tcp_pacing_ss_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ss_ratio =' not found."
+          grep "sysctl_tcp_pacing_ca_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ca_ratio =' not found."
           
-          echo "Finished ECN and TCP Pacing tweaks."
-
       - name: Add Kernel Configuration Settings
         run: |
           set -e
@@ -244,18 +237,28 @@ jobs:
           cd common
           git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
 
-      # NEW STEP: Display Hunk #4 of original 69_hide_stuff.patch
-      - name: Display Original Hide Stuff Patch (Hunk 4 for task_mmu.c)
+      # NEW STEP: Display task_mmu.c BEFORE applying Hide Stuff patch
+      - name: Display task_mmu.c BEFORE Hide Stuff Patch
+        id: display_task_mmu_before
         run: |
           set -e
-          echo "--- Hunk #4 from original 69_hide_stuff.patch (for fs/proc/task_mmu.c) ---"
-          # This command extracts the relevant hunk. It assumes the hunk starts after "@@ -484,10 +484,18 @@"
-          # and targets fs/proc/task_mmu.c. This might need adjustment if the patch structure is different.
-          # A simpler approach is to cat the whole patch if this is too complex.
-          # For now, let's try to be specific.
-          # We need to find the hunk that modifies task_mmu.c and is likely Hunk #4
-          # The original patch has multiple file changes.
-          echo "Displaying the whole 69_hide_stuff.patch for manual inspection of Hunk #4 for task_mmu.c:"
+          TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
+          if [ -f "$TASK_MMU_PATH" ]; then
+            echo "--- Content of $TASK_MMU_PATH BEFORE Hide Stuff patch (around Hunk #4 target) ---"
+            # Hunk #4 in 69_hide_stuff.patch for task_mmu.c starts with @@ -442,6 +460,23 @@
+            # Let's show a range like 430 to 470 to get good context
+            sed -n '430,490p' "$TASK_MMU_PATH" 
+          else
+            echo "ERROR: $TASK_MMU_PATH not found!"
+            # exit 1 # Do not exit, let the build try to continue or fail at patch step
+          fi
+
+      # NEW STEP: Display original 69_hide_stuff.patch content
+      - name: Display Original 69_hide_stuff.patch Content
+        id: display_original_hide_patch
+        run: |
+          set -e
+          echo "--- Content of original 69_hide_stuff.patch ---"
           cat $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch
 
       - name: Apply Hide Stuff Patch
@@ -264,17 +267,23 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
           echo "--- Applying 69_hide_stuff.patch ---"
+          # Attempt to apply with --dry-run first to see potential issues without changing files
+          echo "--- Dry-run output for 69_hide_stuff.patch ---"
+          patch -p1 --dry-run --no-backup-if-mismatch < 69_hide_stuff.patch || echo "INFO: Dry-run of 69_hide_stuff.patch indicated issues or completed with non-zero exit."
+          
+          echo "--- Actual application of 69_hide_stuff.patch ---"
           patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
           
-      # NEW STEP: Display relevant section of task_mmu.c AFTER applying hide_stuff_patch
-      - name: Display task_mmu.c after Hide Stuff Patch
+      # NEW STEP: Display task_mmu.c AFTER applying Hide Stuff patch
+      - name: Display task_mmu.c AFTER Hide Stuff Patch
+        id: display_task_mmu_after
         run: |
           set -e
           TASK_MMU_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/fs/proc/task_mmu.c"
           if [ -f "$TASK_MMU_PATH" ]; then
-            echo "--- Relevant section from $TASK_MMU_PATH AFTER Hide Stuff patch (around line 342 from previous fuzzy log) ---"
-            # We'll show a broader context, e.g., lines 300-400, adjust if needed
-            sed -n '300,400p' "$TASK_MMU_PATH" || echo "INFO: Could not display section of task_mmu.c"
+            echo "--- Content of $TASK_MMU_PATH AFTER Hide Stuff patch (around Hunk #4 target area) ---"
+            # Show the same range as before, or a bit more to see changes
+            sed -n '430,500p' "$TASK_MMU_PATH"
           else
             echo "ERROR: $TASK_MMU_PATH not found after patching!"
           fi
