@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # Your preferred date format
+       default: 'Tue Dec 17 23:36:49 UTC 2024' # Date format from HanKuCha
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -178,6 +178,7 @@ jobs:
          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
          mkdir -p "$HMBIRD_PATCH_DIR" 
          cd "$HMBIRD_PATCH_DIR"
+         # Create the hmbird_patch.c file
          cat << 'EOF' > hmbird_patch.c
          #include <linux/init.h>
          #include <linux/module.h>
@@ -264,6 +265,7 @@ EOF
          else
            echo "HMBird patch already in drivers/Makefile."
          fi
+         # Commit the changes to the source tree so they are included in the build
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
             echo "Committing HMBird patch changes..."
