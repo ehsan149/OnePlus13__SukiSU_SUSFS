@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: 'Tue Dec 17 23:36:49 UTC 2024' 
+       default: 'Tue Dec 17 23:36:49 UTC 2024'
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -244,7 +244,6 @@ static int __init hmbird_patch_init(void)
            of_node_put(ver_np); 
            return -EINVAL; 
         }
-        // prop is unlinked, its value (if const) is not ours to kfree.
         
         if (of_add_property(ver_np, new_prop_st) !=0) {
            pr_err("hmbird_patch: of_add_property failed\n");
@@ -255,7 +254,7 @@ static int __init hmbird_patch_init(void)
         }
         pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
    } else {
-        pr_info("hmbird_patch: 'type' property found but could not be read as struct, skipping.\n");
+        pr_info("hmbird_patch: 'type' property not found (struct property), skipping.\n");
    }
    of_node_put(ver_np); 
    return 0;
@@ -265,8 +264,7 @@ static int __init hmbird_patch_init(void)
    MODULE_AUTHOR("reigadegr"); 
    MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-         # Ensure Makefile exists, then add hmbird_patch.o to obj-y
-         # The EOF above MUST NOT be indented.
+         # The EOF above MUST NOT be indented with spaces. It should be at the beginning of the line.
          if [ -f "Makefile" ]; then
              if ! grep -q "hmbird_patch.o" Makefile; then
                echo "obj-y += hmbird_patch.o" >> Makefile
@@ -278,9 +276,7 @@ EOF
              echo "WARN: drivers/Makefile not found, cannot add hmbird_patch.o"
          fi
          
-         # Commit changes within the kernel_platform git repository
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
-         # Check if there are actual changes related to hmbird_patch.c or the Makefile in common/drivers
          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
             echo "Committing HMBird GKI patch module to local kernel source tree..."
             git add common/drivers/hmbird_patch.c common/drivers/Makefile
@@ -363,8 +359,7 @@ EOF
 
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          # Commit changes to defconfig
-          git add -A && git commit -m "Update defconfig for SukiSU, features, and kernel name" --allow-empty || echo "No defconfig changes to commit."
+          git add -A && git commit -m "Update defconfig with all features and precise custom kernel name" --allow-empty || echo "No defconfig changes to commit."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
