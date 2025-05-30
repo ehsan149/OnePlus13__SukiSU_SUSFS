@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v3
+name: OnePlus 13 Build v4
 on:
   workflow_dispatch:
     inputs:
@@ -181,91 +181,18 @@ jobs:
           set -e
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
+          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" # Assuming you created kernel_addons folder
+
+          if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
+            echo "ERROR: $HMBIRD_SOURCE_FILE not found in repository!"
+            exit 1
+          fi
+          
           mkdir -p "$HMBIRD_PATCH_DIR"
+          cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
+          echo "hmbird_patch.c copied to drivers directory."
+          
           cd "$HMBIRD_PATCH_DIR"
-          
-          cat << 'EOF' > hmbird_patch.c
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/slab.h>
-#include <linux/string.h>
-
-static int __init hmbird_patch_init(void)
-{
-    struct device_node *ver_np;
-    const char *type;
-    int ret;
-
-    ver_np = of_find_node_by_path("/soc/oplus,hmbird/version_type");
-    if (!ver_np) {
-        pr_info("hmbird_patch: version_type node not found, skipping patch.\n");
-        return 0;
-    }
-
-    ret = of_property_read_string(ver_np, "type", &type);
-    if (ret) {
-        pr_info("hmbird_patch: type property not found, skipping patch.\n");
-        of_node_put(ver_np);
-        return 0;
-    }
-
-    if (strcmp(type, "HMBIRD_OGKI")) {
-        pr_info("hmbird_patch: type is not HMBIRD_OGKI, skipping patch. Current type: %s\n", type);
-        of_node_put(ver_np);
-        return 0;
-    }
-
-    struct property *prop = of_find_property(ver_np, "type", NULL);
-    if (prop) {
-        char *new_value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
-        if (!new_value) {
-            pr_err("hmbird_patch: kmalloc for new_value failed\n");
-            of_node_put(ver_np);
-            return -ENOMEM;
-        }
-        strcpy(new_value, "HMBIRD_GKI");
-
-        struct property *new_prop_st = kmalloc(sizeof(*new_prop_st), GFP_KERNEL);
-        if (!new_prop_st) {
-            pr_err("hmbird_patch: kmalloc for new_prop_st failed\n");
-            kfree(new_value);
-            of_node_put(ver_np);
-            return -ENOMEM;
-        }
-        memcpy(new_prop_st, prop, sizeof(*new_prop_st)); 
-        new_prop_st->value = new_value;
-        new_prop_st->length = strlen("HMBIRD_GKI") + 1;
-
-        if (of_remove_property(ver_np, prop) != 0) {
-           pr_err("hmbird_patch: of_remove_property failed\n");
-           kfree(new_value);
-           kfree(new_prop_st);
-           of_node_put(ver_np); 
-           return -EINVAL; 
-        }
-        
-        if (of_add_property(ver_np, new_prop_st) !=0) {
-           pr_err("hmbird_patch: of_add_property failed\n");
-           kfree(new_value); 
-           kfree(new_prop_st); 
-           of_node_put(ver_np);
-           return -EINVAL; 
-        }
-        pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
-   } else {
-        pr_info("hmbird_patch: 'type' property not found (struct property), skipping.\n");
-   }
-   of_node_put(ver_np); 
-   return 0;
-}
-early_initcall(hmbird_patch_init);
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("reigadegr"); 
-MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
-EOF
-          # The above EOF marker MUST be at the very beginning of its line, with no preceding spaces.
-          
           if [ -f "Makefile" ]; then
               if ! grep -q "hmbird_patch.o" Makefile; then
                 echo "obj-y += hmbird_patch.o" >> Makefile
@@ -274,11 +201,15 @@ EOF
                 echo "HMBird patch object already in drivers/Makefile."
               fi
           else
-              echo "WARN: drivers/Makefile not found, cannot add hmbird_patch.o"
+              # If Makefile doesn't exist, create it and add the line
+              echo "obj-y += hmbird_patch.o" > Makefile
+              echo "Created drivers/Makefile and added HMBird patch object."
           fi
           
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
-          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
+          # Check if there are actual changes to hmbird_patch.c or the Makefile in common/drivers
+          # Use git diff --quiet to check for uncommitted changes in specific files
+          if ! git diff --quiet -- common/drivers/hmbird_patch.c common/drivers/Makefile; then
              echo "Committing HMBird GKI patch module to local kernel source tree..."
              git add common/drivers/hmbird_patch.c common/drivers/Makefile
              git commit -m "Add HMBird GKI patch module"
@@ -351,7 +282,7 @@ EOF
           fi
           echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
 
-          # Kernel Name defconfig settings - For precise kernel name
+          # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
           sed -i '/CONFIG_LOCALVERSION=/d' "${DEFCONFIG_PATH}" 
@@ -448,4 +379,3 @@ EOF
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
-         
