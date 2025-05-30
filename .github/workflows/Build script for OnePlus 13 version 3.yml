@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v2
+name: OnePlus 13 Build v3
 on:
   workflow_dispatch:
     inputs:
@@ -23,13 +23,13 @@ on:
         required: true
         default: '6.6'
       KERNEL_NAME: 
-        description: "Custom kernel name (e.g., -MyKernel-v1)" # Example: -MyKernel-v1
+        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
         required: true
         default: '-By-Ehsan149-4k' 
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: 'Tue Dec 17 23:36:49 UTC 2024' # Date format used by HanKuCha
+       default: '2024-12-17 23:36:49 UTC' # Your preferred date format
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -41,7 +41,7 @@ on:
        default: false
        type: boolean
       enable_feature_z:
-       description: "Enable FengChi driver (sched_ext)" # This is sched_ext
+       description: "Enable FengChi driver (sched_ext)" 
        required: false
        default: false
        type: boolean
@@ -53,8 +53,8 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache  # From HanKuCha
-      CCACHE_MAXSIZE: 8G             # From HanKuCha
+      CCACHE_DIR: /home/runner/.ccache  # CCACHE Directory
+      CCACHE_MAXSIZE: 8G             # CCACHE Max Size
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -77,25 +77,24 @@ jobs:
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
-         sudo apt install -y python3 git curl patch ccache # ccache added
+         sudo apt install -y python3 git curl patch ccache # Added ccache
 
       - name: Restore ccache
         uses: actions/cache@v3
-        id: ccache # Give an id to check cache-hit status later
+        id: ccache 
         with:
           path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} # More specific key
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
           restore-keys: |
             ccache-${{ runner.os }}-${{ github.ref }}-
             ccache-${{ runner.os }}-
       
       - name: Setup ccache
-        # This step runs if ccache was not restored from a previous run for this exact commit
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
-          echo "No ccache found for this commit, or cache is from a different branch/OS. Initializing ccache."
-          ccache -Cz # Clear ccache statistics (zeroes counters)
-          ccache -M ${{ env.CCACHE_MAXSIZE }} # Set max size
+          echo "No ccache found, or cache is for a different commit. Initializing ccache."
+          ccache -Cz 
+          ccache -M ${{ env.CCACHE_MAXSIZE }}
           echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
 
       - name: Install repo tool
@@ -179,7 +178,6 @@ jobs:
          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
          mkdir -p "$HMBIRD_PATCH_DIR" 
          cd "$HMBIRD_PATCH_DIR"
-         # Create the hmbird_patch.c file
          cat << 'EOF' > hmbird_patch.c
          #include <linux/init.h>
          #include <linux/module.h>
@@ -212,10 +210,6 @@ jobs:
                  return 0;
              }
 
-             // This part attempts to modify a device tree property at runtime.
-             // It's generally safer and more robust to modify the DTS/DTSI files directly
-             // and recompile the DTB, or use a DTBO.
-             // However, sticking to HanKuCha's method for now.
              struct property *prop = of_find_property(ver_np, "type", NULL);
              if (prop) {
                  char *new_value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
@@ -226,7 +220,6 @@ jobs:
                  }
                  strcpy(new_value, "HMBIRD_GKI");
 
-                 // Create a new property struct to replace the old one
                  struct property *new_prop_st = kmalloc(sizeof(*new_prop_st), GFP_KERNEL);
                  if (!new_prop_st) {
                      pr_err("hmbird_patch: kmalloc for new_prop_st failed\n");
@@ -234,13 +227,10 @@ jobs:
                      of_node_put(ver_np);
                      return -ENOMEM;
                  }
-                 // Copy original property attributes (name, flags, etc.)
                  memcpy(new_prop_st, prop, sizeof(*new_prop_st)); 
-                 // Assign new value and length
                  new_prop_st->value = new_value;
                  new_prop_st->length = strlen("HMBIRD_GKI") + 1;
 
-                 // Remove the old property
                  if (of_remove_property(ver_np, prop) != 0) {
                     pr_err("hmbird_patch: of_remove_property failed\n");
                     kfree(new_value);
@@ -248,12 +238,10 @@ jobs:
                     of_node_put(ver_np); 
                     return -EINVAL; 
                  }
-                 // prop itself is now unlinked. Its original value (if it was const char*) is not our responsibility to free.
                  
-                 // Add the new property
                  if (of_add_property(ver_np, new_prop_st) !=0) {
                     pr_err("hmbird_patch: of_add_property failed\n");
-                    kfree(new_value); // new_prop_st->value
+                    kfree(new_value); 
                     kfree(new_prop_st); 
                     of_node_put(ver_np);
                     return -EINVAL; 
@@ -262,24 +250,21 @@ jobs:
             } else {
                  pr_info("hmbird_patch: 'type' property found but could not be read as struct, skipping.\n");
             }
-            of_node_put(ver_np); // Release the node reference
+            of_node_put(ver_np); 
             return 0;
             }
             early_initcall(hmbird_patch_init);
             MODULE_LICENSE("GPL");
-            MODULE_AUTHOR("reigadegr"); // Author from HanKuCha's script
+            MODULE_AUTHOR("reigadegr"); 
             MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-         # Add to Makefile in drivers directory to compile this new .c file
          if ! grep -q "hmbird_patch.o" Makefile; then
            echo "obj-y += hmbird_patch.o" >> Makefile
            echo "HMBird patch added to drivers/Makefile."
          else
            echo "HMBird patch already in drivers/Makefile."
          fi
-         # Commit the changes to the source tree so they are included in the build
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform # Go to the root of the kernel platform git repo
-         # Check if there are actual changes to hmbird_patch.c or the Makefile
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
             echo "Committing HMBird patch changes..."
             git add common/drivers/hmbird_patch.c common/drivers/Makefile
@@ -404,7 +389,7 @@ EOF
            set -e
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
-           export PATH="/usr/lib/ccache:$PATH" # Ensure ccache is in PATH for Bazel
+           export PATH="/usr/lib/ccache:$PATH" 
            echo "Using CCACHE directory: $CCACHE_DIR"
            echo "Ccache statistics before build:"
            ccache -s
@@ -428,7 +413,6 @@ EOF
         run: |
          set -e
          cd $GITHUB_WORKSPACE 
-         # Using your preferred AnyKernel3 source
          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
