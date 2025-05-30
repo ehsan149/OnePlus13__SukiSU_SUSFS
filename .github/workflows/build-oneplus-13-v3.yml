@@ -190,7 +190,7 @@ jobs:
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
 
-       - name: Apply HMBird GKI patch
+     - name: Apply HMBird GKI patch
         run: |
           set -e
           echo "Applying HMBird GKI patch..."
