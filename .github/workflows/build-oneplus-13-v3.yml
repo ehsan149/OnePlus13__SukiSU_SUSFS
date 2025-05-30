@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' 
+       default: '2024-12-17 23:36:49 UTC' # User's preferred date format
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -56,7 +56,9 @@ jobs:
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
     steps:
-      # Step order corrected: Maximize space first
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -66,22 +68,6 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: List files in GITHUB_WORKSPACE after checkout # Debug step
-        run: |
-          echo "Listing GITHUB_WORKSPACE root after checkout (and after maximize space):"
-          ls -la $GITHUB_WORKSPACE
-          echo "Listing kernel_addons directory if it exists:"
-          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
-          echo "Checking for hmbird_patch.c specifically:"
-          if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
-            echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
-          else
-            echo "hmbird_patch.c NOT FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
-          fi
           
       - name: Configure Git
         run: |
@@ -197,21 +183,12 @@ jobs:
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
 
-          # Debug lines to ensure file is found after checkout and maximize space
-          echo "DEBUG (HMBird Step): Value of GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
-          echo "DEBUG (HMBird Step): Expected HMBIRD_SOURCE_FILE path is: $HMBIRD_SOURCE_FILE"
-          echo "DEBUG (HMBird Step): Listing contents of $GITHUB_WORKSPACE/kernel_addons:"
-          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "DEBUG (HMBird Step): kernel_addons directory not found or ls failed."
-
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
-            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found right before cp command!"
-            echo "Contents of $GITHUB_WORKSPACE might be relevant:"
-            ls -la $GITHUB_WORKSPACE
+            echo "ERROR: $HMBIRD_SOURCE_FILE not found in repository! Please ensure it exists at this path."
             exit 1
           fi
           
           mkdir -p "$HMBIRD_PATCH_DIR"
-          echo "DEBUG (HMBird Step): Attempting to copy $HMBIRD_SOURCE_FILE to $HMBIRD_PATCH_DIR/"
           cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
           echo "hmbird_patch.c copied to drivers directory."
           
@@ -369,9 +346,20 @@ jobs:
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
+         echo "DEBUG: Files in dist before patch_linux:"
+         ls -la
          ./patch_linux
-         rm -f Image
-         mv oImage Image
+         echo "DEBUG: Files in dist after patch_linux:"
+         ls -la
+         if [ -f "oImage" ]; then
+           rm -f Image 
+           mv oImage Image
+           echo "DEBUG: oImage moved to Image. Files in dist now:"
+           ls -la
+         else
+           echo "DEBUG: oImage not found. Assuming patch_linux modified Image in-place or failed."
+           ls -la # Show files again
+         fi
          
       - name: Prepare AnyKernel3 Zip
         run: |
@@ -381,7 +369,15 @@ jobs:
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
          
-         cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+         echo "DEBUG: Checking for Image in dist before copying to AnyKernel3_Package:"
+         ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+         if [ -f "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image" ]; then
+           cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+           echo "Image copied to AnyKernel3_Package."
+         else
+           echo "ERROR: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image not found for AnyKernel3 packaging!"
+           exit 1
+         fi
          
          cd AnyKernel3_Package
          zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
