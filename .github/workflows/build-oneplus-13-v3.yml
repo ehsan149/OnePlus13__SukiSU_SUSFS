@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v3
+name: OnePlus 13 Build  v3
 on:
   workflow_dispatch:
     inputs:
@@ -183,7 +183,6 @@ jobs:
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
           mkdir -p "$HMBIRD_PATCH_DIR"
           cd "$HMBIRD_PATCH_DIR"
-          
           cat << 'EOF' > hmbird_patch.c
 #include <linux/init.h>
 #include <linux/module.h>
@@ -264,28 +263,28 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("reigadegr"); 
 MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-         # The EOF above MUST be at the very beginning of its line, with no leading spaces.
-         
-         if [ -f "Makefile" ]; then
-             if ! grep -q "hmbird_patch.o" Makefile; then
-               echo "obj-y += hmbird_patch.o" >> Makefile
-               echo "HMBird patch object added to drivers/Makefile."
-             else
-               echo "HMBird patch object already in drivers/Makefile."
-             fi
-         else
-             echo "WARN: drivers/Makefile not found, cannot add hmbird_patch.o"
-         fi
-         
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
-         if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
-            echo "Committing HMBird GKI patch module to local kernel source tree..."
-            git add common/drivers/hmbird_patch.c common/drivers/Makefile
-            git commit -m "Add HMBird GKI patch module"
-         else
-            echo "No new HMBird files or Makefile changes found to commit in kernel_platform."
-         fi
-         echo "Finished HMBird GKI patch application."
+          # The above EOF marker MUST be at the beginning of the line, with no preceding spaces.
+          
+          if [ -f "Makefile" ]; then
+              if ! grep -q "hmbird_patch.o" Makefile; then
+                echo "obj-y += hmbird_patch.o" >> Makefile
+                echo "HMBird patch object added to drivers/Makefile."
+              else
+                echo "HMBird patch object already in drivers/Makefile."
+              fi
+          else
+              echo "WARN: drivers/Makefile not found, cannot add hmbird_patch.o"
+          fi
+          
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
+          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
+             echo "Committing HMBird GKI patch module to local kernel source tree..."
+             git add common/drivers/hmbird_patch.c common/drivers/Makefile
+             git commit -m "Add HMBird GKI patch module"
+          else
+             echo "No new HMBird files or Makefile changes found to commit in kernel_platform."
+          fi
+          echo "Finished HMBird GKI patch application."
 
       - name: Apply lz4kd Patches
         if: ${{inputs.enable_feature_y }}
