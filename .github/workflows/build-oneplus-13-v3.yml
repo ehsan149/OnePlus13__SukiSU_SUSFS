@@ -53,12 +53,10 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache
-      CCACHE_MAXSIZE: 8G
+      CCACHE_DIR: /home/runner/.ccache  # CCACHE Directory
+      CCACHE_MAXSIZE: 8G             # CCACHE Max Size
     steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
+      # STEP ORDER CORRECTED: Maximize build space runs BEFORE checkout
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -68,6 +66,22 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
+          
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: List files in GITHUB_WORKSPACE after checkout and maximize space # Debug step
+        run: |
+          echo "Listing GITHUB_WORKSPACE root (after maximize space and checkout):"
+          ls -la $GITHUB_WORKSPACE
+          echo "Listing kernel_addons directory if it exists:"
+          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
+          echo "Checking for hmbird_patch.c specifically:"
+          if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
+            echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          else
+            echo "hmbird_patch.c NOT FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          fi
           
       - name: Configure Git
         run: |
@@ -79,7 +93,7 @@ jobs:
           sudo apt update && sudo apt upgrade -y
           sudo apt install -y python3 git curl patch ccache
 
-      - name: Restore ccache
+      - name: Restore ccache # From HanKuCha
         uses: actions/cache@v3
         id: ccache 
         with:
@@ -89,7 +103,7 @@ jobs:
             ccache-${{ runner.os }}-${{ github.ref }}-
             ccache-${{ runner.os }}-
       
-      - name: Setup ccache
+      - name: Setup ccache # From HanKuCha
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
           echo "No ccache found, or cache is for a different commit. Initializing ccache."
@@ -97,7 +111,7 @@ jobs:
           ccache -M ${{ env.CCACHE_MAXSIZE }}
           echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
         
-      - name: Display ccache stats before operations
+      - name: Display ccache stats before operations # Good practice
         run: |
           echo "Initial Ccache statistics:"
           ccache -s
@@ -108,7 +122,7 @@ jobs:
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          echo "Repo tool installed." 
+          echo "Repo tool installed." # Removed repo --version 
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -183,12 +197,20 @@ jobs:
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
 
+          echo "DEBUG (HMBird Step): Value of GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
+          echo "DEBUG (HMBird Step): Expected HMBIRD_SOURCE_FILE path is: $HMBIRD_SOURCE_FILE"
+          echo "DEBUG (HMBird Step): Listing contents of $GITHUB_WORKSPACE/kernel_addons (should be present now):"
+          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "DEBUG (HMBird Step): kernel_addons directory not found or ls failed."
+
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
-            echo "ERROR: $HMBIRD_SOURCE_FILE not found in repository! Please ensure it exists at this path."
+            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found right before cp command!"
+            echo "Contents of $GITHUB_WORKSPACE might be relevant:"
+            ls -la $GITHUB_WORKSPACE
             exit 1
           fi
           
           mkdir -p "$HMBIRD_PATCH_DIR"
+          echo "DEBUG (HMBird Step): Attempting to copy $HMBIRD_SOURCE_FILE to $HMBIRD_PATCH_DIR/"
           cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
           echo "hmbird_patch.c copied to drivers directory."
           
