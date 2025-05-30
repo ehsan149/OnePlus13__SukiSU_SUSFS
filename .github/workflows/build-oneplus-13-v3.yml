@@ -190,19 +190,27 @@ jobs:
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
 
-      - name: Apply HMBird GKI patch
+       - name: Apply HMBird GKI patch
         run: |
           set -e
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
+          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
 
+          echo "DEBUG: Value of GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
+          echo "DEBUG: Expected HMBIRD_SOURCE_FILE path is: $HMBIRD_SOURCE_FILE"
+          echo "DEBUG: Listing contents of $GITHUB_WORKSPACE/kernel_addons just before copy:"
+          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "DEBUG: kernel_addons directory not found or ls failed."
+          
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
-            echo "ERROR: $HMBIRD_SOURCE_FILE not found in repository! Please ensure it exists at this path."
+            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE still not found right before cp command!"
+            echo "Contents of $GITHUB_WORKSPACE might be relevant:"
+            ls -la $GITHUB_WORKSPACE
             exit 1
           fi
           
           mkdir -p "$HMBIRD_PATCH_DIR"
+          echo "DEBUG: Attempting to copy $HMBIRD_SOURCE_FILE to $HMBIRD_PATCH_DIR/"
           cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
           echo "hmbird_patch.c copied to drivers directory."
           
