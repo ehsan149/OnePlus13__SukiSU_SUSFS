@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # User's preferred date format
+       default: '2024-12-17 23:36:49 UTC' 
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -58,6 +58,19 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+
+      - name: List files in GITHUB_WORKSPACE # Debug step
+        run: |
+          echo "Listing GITHUB_WORKSPACE root:"
+          ls -la $GITHUB_WORKSPACE
+          echo "Listing kernel_addons directory if it exists:"
+          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
+          echo "Checking for hmbird_patch.c specifically:"
+          if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
+            echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          else
+            echo "hmbird_patch.c NOT FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          fi
 
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -108,7 +121,8 @@ jobs:
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          repo --version || echo "WARN: repo --version failed after installation attempt."
+          # Removed repo --version to avoid error if PATH is not immediately updated
+          echo "Repo tool installed."
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -117,7 +131,7 @@ jobs:
       - name: Initialize repo and sync
         run: |
           set -e 
-          which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
+          which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           
           mkdir kernel_workspace && cd kernel_workspace
           repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
@@ -193,18 +207,18 @@ jobs:
           echo "hmbird_patch.c copied to drivers directory."
           
           cd "$HMBIRD_PATCH_DIR"
-          # Ensure Makefile exists before attempting to modify it
-          if [ ! -f "Makefile" ]; then
-            echo "obj-y += hmbird_patch.o" > Makefile
-            echo "Created drivers/Makefile and added HMBird patch object."
-          elif ! grep -q "hmbird_patch.o" Makefile; then
-            echo "obj-y += hmbird_patch.o" >> Makefile
-            echo "HMBird patch object added to existing drivers/Makefile."
+          if [ -f "Makefile" ]; then
+              if ! grep -q "hmbird_patch.o" Makefile; then
+                echo "obj-y += hmbird_patch.o" >> Makefile
+                echo "HMBird patch object added to drivers/Makefile."
+              else
+                echo "HMBird patch object already in drivers/Makefile."
+              fi
           else
-            echo "HMBird patch object already in drivers/Makefile."
+              echo "obj-y += hmbird_patch.o" > Makefile
+              echo "Created drivers/Makefile and added HMBird patch object."
           fi
           
-          # Commit changes within the kernel_platform git repository (local to the runner)
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
           if ! git diff --quiet HEAD -- common/drivers/hmbird_patch.c common/drivers/Makefile; then
              echo "Committing HMBird GKI patch module to local kernel source tree..."
