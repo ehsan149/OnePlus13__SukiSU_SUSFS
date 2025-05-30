@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # User's preferred date format
+       default: '2024-12-17 23:36:49 UTC' 
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -56,22 +56,7 @@ jobs:
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
     steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: List files in GITHUB_WORKSPACE after checkout # Debug step from previous version
-        run: |
-          echo "Listing GITHUB_WORKSPACE root:"
-          ls -la $GITHUB_WORKSPACE
-          echo "Listing kernel_addons directory if it exists:"
-          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
-          echo "Checking for hmbird_patch.c specifically:"
-          if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
-            echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
-          else
-            echo "hmbird_patch.c NOT FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
-          fi
-
+      # Step order corrected: Maximize space first
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -81,6 +66,22 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
+
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: List files in GITHUB_WORKSPACE after checkout # Debug step
+        run: |
+          echo "Listing GITHUB_WORKSPACE root after checkout (and after maximize space):"
+          ls -la $GITHUB_WORKSPACE
+          echo "Listing kernel_addons directory if it exists:"
+          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
+          echo "Checking for hmbird_patch.c specifically:"
+          if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
+            echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          else
+            echo "hmbird_patch.c NOT FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          fi
           
       - name: Configure Git
         run: |
@@ -121,7 +122,7 @@ jobs:
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          echo "Repo tool installed." # Removed repo --version to avoid error if PATH is not immediately updated
+          echo "Repo tool installed." 
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -194,22 +195,23 @@ jobs:
           set -e
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
 
-          echo "DEBUG: Value of GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
-          echo "DEBUG: Expected HMBIRD_SOURCE_FILE path is: $HMBIRD_SOURCE_FILE"
-          echo "DEBUG: Listing contents of $GITHUB_WORKSPACE/kernel_addons just before copy:"
-          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "DEBUG: kernel_addons directory not found or ls failed."
-          
+          # Debug lines to ensure file is found after checkout and maximize space
+          echo "DEBUG (HMBird Step): Value of GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
+          echo "DEBUG (HMBird Step): Expected HMBIRD_SOURCE_FILE path is: $HMBIRD_SOURCE_FILE"
+          echo "DEBUG (HMBird Step): Listing contents of $GITHUB_WORKSPACE/kernel_addons:"
+          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "DEBUG (HMBird Step): kernel_addons directory not found or ls failed."
+
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
-            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE still not found right before cp command!"
+            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found right before cp command!"
             echo "Contents of $GITHUB_WORKSPACE might be relevant:"
             ls -la $GITHUB_WORKSPACE
             exit 1
           fi
           
           mkdir -p "$HMBIRD_PATCH_DIR"
-          echo "DEBUG: Attempting to copy $HMBIRD_SOURCE_FILE to $HMBIRD_PATCH_DIR/"
+          echo "DEBUG (HMBird Step): Attempting to copy $HMBIRD_SOURCE_FILE to $HMBIRD_PATCH_DIR/"
           cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
           echo "hmbird_patch.c copied to drivers directory."
           
