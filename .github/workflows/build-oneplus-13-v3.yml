@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v3
+name: OnePlus 13 Build  v3
 on:
   workflow_dispatch:
     inputs:
@@ -148,18 +148,15 @@ jobs:
           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
 
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
-          if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then
-            echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
+          if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
 
           git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
-          if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then
-            echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
+          if [ ! -d "${SUKISI_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
 
           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch"
           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
 
-          if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
-            echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"; exit 1; fi
+          if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"; exit 1; fi
 
           cp "${EXPECTED_PATCH_PATH}" ./common/
           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
@@ -338,113 +335,4 @@ EOF
           echo "CONFIG_TCP_CONG_BBR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_BIC=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_HTCP=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
-            echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_ZRAM_DEF_COMP_LZ4=y" >> "${DEFCONFIG_PATH}"
-            echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> "${DEFCONFIG_PATH}"
-          fi
-          echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
-
-          # Kernel Name defconfig settings - For precise kernel name
-          echo "Modifying defconfig for custom kernel name..."
-          sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}"
-          sed -i '/CONFIG_LOCALVERSION=/d' "${DEFCONFIG_PATH}"
-          echo "CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
-          echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\""
-
-          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
-          cd common
-          git add -A && git commit -m "Update defconfig with all features and precise custom kernel name" --allow-empty || echo "No defconfig changes to commit."
-
-      - name: Add KPM Configuration Settings
-        if: ${{ inputs.enable_feature_x }}
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
-          cd common
-          git add -A && git commit -m "Add KPM config to defconfig" --allow-empty || echo "No KPM defconfig changes to commit."
-
-      - name: Apply Hide Stuff Patch
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
-            cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-            patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
-          else
-            echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
-          fi
-
-      - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z }}
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
-          git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
-          cp -r ./sched_ext_temp/* ./common/kernel/sched
-          rm -rf ./sched_ext_temp
-
-      - name: Set Kernel build timestamp
-        run: |
-          export SOURCE_DATE_EPOCH=$(date -d "${{ github.event.inputs.KERNEL_TIME }}" +%s)
-          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
-
-      - name: Build Kernel
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
-          export PATH="/usr/lib/ccache:$PATH"
-          echo "Using CCACHE directory: $CCACHE_DIR"
-          echo "Ccache statistics before build:"
-          ccache -s
-
-          tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
-
-          echo "Ccache statistics after build:"
-          ccache -s
-
-      - name: Make AnyKernel3 (Patch Image)
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
-          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
-          chmod +x patch_linux
-          ./patch_linux
-          rm -f Image
-          mv oImage Image
-
-      - name: Prepare AnyKernel3 Zip
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE
-          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
-          rm -rf ./AnyKernel3_Package/.git
-          rm -rf ./AnyKernel3_Package/push.sh
-
-          cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
-
-          cd AnyKernel3_Package
-          zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
-          cd ..
-
-      - name: Upload AnyKernel3 Zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
-          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
-
-      - name: Upload Raw Image
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-          path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
+          echo "CONFIG_TCP_CONG_HTCP=n" >> …
