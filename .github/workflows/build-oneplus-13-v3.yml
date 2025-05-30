@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # User's preferred date format
+       default: '2024-12-17 23:36:49 UTC' # Reverted to user's preferred date format
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -53,8 +53,8 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache  # CCACHE Directory
-      CCACHE_MAXSIZE: 8G             # CCACHE Max Size
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 8G
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
           sudo apt update && sudo apt upgrade -y
           sudo apt install -y python3 git curl patch ccache
 
-      - name: Restore ccache # From HanKuCha
+      - name: Restore ccache
         uses: actions/cache@v3
         id: ccache 
         with:
@@ -89,7 +89,7 @@ jobs:
             ccache-${{ runner.os }}-${{ github.ref }}-
             ccache-${{ runner.os }}-
       
-      - name: Setup ccache # From HanKuCha
+      - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
           echo "No ccache found, or cache is for a different commit. Initializing ccache."
@@ -97,7 +97,7 @@ jobs:
           ccache -M ${{ env.CCACHE_MAXSIZE }}
           echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
         
-      - name: Display ccache stats before operations # Good practice
+      - name: Display ccache stats before operations
         run: |
           echo "Initial Ccache statistics:"
           ccache -s
@@ -181,7 +181,6 @@ jobs:
           set -e
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          # This assumes you have kernel_addons/hmbird_patch.c in your repository root
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
 
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
@@ -194,20 +193,19 @@ jobs:
           echo "hmbird_patch.c copied to drivers directory."
           
           cd "$HMBIRD_PATCH_DIR"
-          # Ensure Makefile exists before attempting to modify it
-          if [ ! -f "Makefile" ]; then
-            echo "obj-y += hmbird_patch.o" > Makefile
-            echo "Created drivers/Makefile and added HMBird patch object."
-          elif ! grep -q "hmbird_patch.o" Makefile; then
-            echo "obj-y += hmbird_patch.o" >> Makefile
-            echo "HMBird patch object added to existing drivers/Makefile."
+          if [ -f "Makefile" ]; then
+              if ! grep -q "hmbird_patch.o" Makefile; then
+                echo "obj-y += hmbird_patch.o" >> Makefile
+                echo "HMBird patch object added to drivers/Makefile."
+              else
+                echo "HMBird patch object already in drivers/Makefile."
+              fi
           else
-            echo "HMBird patch object already in drivers/Makefile."
+              echo "obj-y += hmbird_patch.o" > Makefile
+              echo "Created drivers/Makefile and added HMBird patch object."
           fi
           
-          # Commit changes within the kernel_platform git repository (local to the runner)
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
-          # Check if there are actual changes to hmbird_patch.c or the Makefile in common/drivers
           if ! git diff --quiet HEAD -- common/drivers/hmbird_patch.c common/drivers/Makefile; then
              echo "Committing HMBird GKI patch module to local kernel source tree..."
              git add common/drivers/hmbird_patch.c common/drivers/Makefile
@@ -378,3 +376,4 @@ jobs:
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
+         
