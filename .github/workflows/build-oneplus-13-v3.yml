@@ -29,8 +29,6 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       # Match HanKuCha's date format for consistency if KBUILD_BUILD_TIMESTAMP is used, 
-       # but date -d should handle your format for SOURCE_DATE_EPOCH.
        default: 'Tue Dec 17 23:36:49 UTC 2024' 
       enable_feature_x:
        description: "Enable KPM support"
@@ -55,8 +53,8 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache  # CCACHE Directory from HanKuCha
-      CCACHE_MAXSIZE: 8G             # CCACHE Max Size from HanKuCha
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 8G
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -79,14 +77,14 @@ jobs:
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
-         sudo apt install -y python3 git curl patch ccache # Added ccache
+         sudo apt install -y python3 git curl patch ccache
 
       - name: Restore ccache
         uses: actions/cache@v3
-        id: ccache # Give an id to check cache-hit status later
+        id: ccache 
         with:
           path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} # Specific key for better caching
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
           restore-keys: |
             ccache-${{ runner.os }}-${{ github.ref }}-
             ccache-${{ runner.os }}-
@@ -94,12 +92,12 @@ jobs:
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
-          echo "No ccache found for this commit/branch, or cache is from a different OS. Initializing ccache."
-          ccache -Cz # Zero statistics
-          ccache -M ${{ env.CCACHE_MAXSIZE }} # Set max size
+          echo "No ccache found, or cache is for a different commit. Initializing ccache."
+          ccache -Cz 
+          ccache -M ${{ env.CCACHE_MAXSIZE }}
           echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
         
-      - name: Display ccache stats before operations that might use it
+      - name: Display ccache stats before operations
         run: |
           echo "Initial Ccache statistics:"
           ccache -s
@@ -185,6 +183,7 @@ jobs:
          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
          mkdir -p "$HMBIRD_PATCH_DIR" 
          cd "$HMBIRD_PATCH_DIR"
+         # Create the hmbird_patch.c file
          cat << 'EOF' > hmbird_patch.c
          #include <linux/init.h>
          #include <linux/module.h>
@@ -245,6 +244,7 @@ jobs:
                     of_node_put(ver_np); 
                     return -EINVAL; 
                  }
+                 // prop is unlinked, its value (if const) is not ours to kfree.
                  
                  if (of_add_property(ver_np, new_prop_st) !=0) {
                     pr_err("hmbird_patch: of_add_property failed\n");
@@ -255,7 +255,7 @@ jobs:
                  }
                  pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
             } else {
-                 pr_info("hmbird_patch: 'type' property found but could not be read as struct, skipping.\n");
+                 pr_info("hmbird_patch: 'type' property not found (struct property), skipping.\n");
             }
             of_node_put(ver_np); 
             return 0;
@@ -265,21 +265,29 @@ jobs:
             MODULE_AUTHOR("reigadegr"); 
             MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-         if ! grep -q "hmbird_patch.o" Makefile; then
-           echo "obj-y += hmbird_patch.o" >> Makefile
-           echo "HMBird patch added to drivers/Makefile."
+         # Ensure Makefile exists, then add hmbird_patch.o to obj-y
+         if [ -f "Makefile" ]; then
+             if ! grep -q "hmbird_patch.o" Makefile; then
+               echo "obj-y += hmbird_patch.o" >> Makefile
+               echo "HMBird patch object added to drivers/Makefile."
+             else
+               echo "HMBird patch object already in drivers/Makefile."
+             fi
          else
-           echo "HMBird patch already in drivers/Makefile."
+             echo "WARN: drivers/Makefile not found, cannot add hmbird_patch.o"
          fi
+         
+         # Commit changes within the kernel_platform git repository
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
+         # Check if there are actual changes related to hmbird_patch.c or the Makefile in common/drivers
          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
-            echo "Committing HMBird patch changes..."
+            echo "Committing HMBird GKI patch module to local kernel source tree..."
             git add common/drivers/hmbird_patch.c common/drivers/Makefile
             git commit -m "Add HMBird GKI patch module"
          else
-            echo "No new HMBird files or Makefile changes to commit."
+            echo "No new HMBird files or Makefile changes found to commit in kernel_platform."
          fi
-         echo "Finished HMBird GKI patch application and commit."
+         echo "Finished HMBird GKI patch application."
 
       - name: Apply lz4kd Patches
         if: ${{inputs.enable_feature_y }}
@@ -354,7 +362,8 @@ EOF
 
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -m "Update defconfig with all features and precise custom kernel name" --allow-empty || echo "No defconfig changes to commit."
+          # Commit changes to defconfig
+          git add -A && git commit -m "Update defconfig for SukiSU, features, and kernel name" --allow-empty || echo "No defconfig changes to commit."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
@@ -364,7 +373,7 @@ EOF
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -m "Add KPM config" --allow-empty || echo "No KPM changes to commit."
+          git add -A && git commit -m "Add KPM config to defconfig" --allow-empty || echo "No KPM defconfig changes to commit."
 
       - name: Apply Hide Stuff Patch
         run: |
