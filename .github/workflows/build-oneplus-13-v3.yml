@@ -71,13 +71,13 @@ jobs:
           
       - name: Configure Git
         run: |
-         git config --global user.name "ehsan149" 
-         git config --global user.email "ehsan149@yahoo.com" 
+          git config --global user.name "ehsan149" 
+          git config --global user.email "ehsan149@yahoo.com" 
 
       - name: Install dependencies
         run: |
-         sudo apt update && sudo apt upgrade -y
-         sudo apt install -y python3 git curl patch ccache
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install -y python3 git curl patch ccache
 
       - name: Restore ccache
         uses: actions/cache@v3
@@ -104,11 +104,11 @@ jobs:
 
       - name: Install repo tool
         run: |
-         mkdir -p $GITHUB_WORKSPACE/bin
-         curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
-         chmod a+x $GITHUB_WORKSPACE/bin/repo
-         echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-         repo --version || echo "WARN: repo --version failed after installation attempt."
+          mkdir -p $GITHUB_WORKSPACE/bin
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
+          chmod a+x $GITHUB_WORKSPACE/bin/repo
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+          repo --version || echo "WARN: repo --version failed after installation attempt."
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -116,75 +116,75 @@ jobs:
 
       - name: Initialize repo and sync
         run: |
-         set -e 
-         which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
-         
-         mkdir kernel_workspace && cd kernel_workspace
-         repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-         repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
-         rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-         rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          set -e 
+          which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
+          
+          mkdir kernel_workspace && cd kernel_workspace
+          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
+          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
          
       - name: Set up SukiSU
         run: |
-         set -e
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-         curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
-         cd ./KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
-         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
+          cd ./KernelSU
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
         
       - name: Set up susfs
         run: |
-           set -e 
-           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          set -e 
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
 
-           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
-           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
-           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
+          SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
+          SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
+          SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
 
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
-           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
+          if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
 
-           git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
-           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+          if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
 
-           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
-           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
+          PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
+          EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
 
-           if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
-               echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
-               exit 1
-           fi
-           
-           cp "${EXPECTED_PATCH_PATH}" ./common/
-           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
-           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
-           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
-           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
-           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
-           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
-           
-           cd ./common 
+          if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
+              echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+              exit 1
+          fi
+          
+          cp "${EXPECTED_PATCH_PATH}" ./common/
+          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
+          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
+          
+          cd ./common 
 
-           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
+          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
 
-           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
-           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
-           patch -p1 -F 3 < syscall_hooks.patch
-           echo "Finished 'Set up susfs' step."
+          patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
+          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
+          patch -p1 -F 3 < syscall_hooks.patch
+          echo "Finished 'Set up susfs' step."
 
       - name: Apply HMBird GKI patch
         run: |
-         set -e
-         echo "Applying HMBird GKI patch..."
-         HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-         mkdir -p "$HMBIRD_PATCH_DIR"
-         cd "$HMBIRD_PATCH_DIR"
-         
-         cat << 'EOF' > hmbird_patch.c
+          set -e
+          echo "Applying HMBird GKI patch..."
+          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
+          mkdir -p "$HMBIRD_PATCH_DIR"
+          cd "$HMBIRD_PATCH_DIR"
+          
+          cat << 'EOF' > hmbird_patch.c
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of.h>
