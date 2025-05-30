@@ -184,8 +184,6 @@ jobs:
          mkdir -p "$HMBIRD_PATCH_DIR"
          cd "$HMBIRD_PATCH_DIR"
          
-         # Create the hmbird_patch.c file
-         # Ensure the 'EOF' marker below is at the very beginning of its line with no leading spaces.
          cat << 'EOF' > hmbird_patch.c
 #include <linux/init.h>
 #include <linux/module.h>
@@ -260,13 +258,14 @@ static int __init hmbird_patch_init(void)
    }
    of_node_put(ver_np); 
    return 0;
-   }
-   early_initcall(hmbird_patch_init);
-   MODULE_LICENSE("GPL");
-   MODULE_AUTHOR("reigadegr"); 
-   MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
+}
+early_initcall(hmbird_patch_init);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("reigadegr"); 
+MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-         # Ensure Makefile exists, then add hmbird_patch.o to obj-y
+         # The EOF above MUST be at the very beginning of its line, with no leading spaces.
+         
          if [ -f "Makefile" ]; then
              if ! grep -q "hmbird_patch.o" Makefile; then
                echo "obj-y += hmbird_patch.o" >> Makefile
