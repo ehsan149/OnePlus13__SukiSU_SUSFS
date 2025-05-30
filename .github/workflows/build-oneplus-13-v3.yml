@@ -23,28 +23,28 @@ on:
         required: true
         default: '6.6'
       KERNEL_NAME: 
-        description: "Custom kernel name (e.g., -By-Ehsan149-4k)" 
+        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
         required: true
         default: '-By-Ehsan149-4k' 
       KERNEL_TIME:
-        description: "Custom kernel build time (default: factory)"
-        required: true
-        default: 'Tue Dec 17 23:36:49 UTC 2024'
+       description: "Custom kernel build time (default: factory)"
+       required: true
+       default: 'Tue Dec 17 23:36:49 UTC 2024' # Date format from HanKuCha
       enable_feature_x:
-        description: "Enable KPM support"
-        required: false
-        default: false
-        type: boolean
+       description: "Enable KPM support"
+       required: false
+       default: false
+       type: boolean
       enable_feature_y:
-        description: "Enable lz4kd compression"
-        required: false
-        default: false
-        type: boolean
+       description: "Enable lz4kd compression"
+       required: false
+       default: false
+       type: boolean
       enable_feature_z:
-        description: "Enable FengChi driver (sched_ext)"
-        required: false
-        default: false
-        type: boolean
+       description: "Enable FengChi driver (sched_ext)" 
+       required: false
+       default: false
+       type: boolean
       
 jobs:
   build:
@@ -53,8 +53,8 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache
-      CCACHE_MAXSIZE: 8G
+      CCACHE_DIR: /home/runner/.ccache  # CCACHE Directory
+      CCACHE_MAXSIZE: 8G             # CCACHE Max Size
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -71,18 +71,13 @@ jobs:
           
       - name: Configure Git
         run: |
-          git config --global user.name "ehsan149" 
-          git config --global user.email "ehsan149@yahoo.com" 
+         git config --global user.name "ehsan149" 
+         git config --global user.email "ehsan149@yahoo.com" 
 
       - name: Install dependencies
         run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch ccache libelf-dev
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
+         sudo apt update && sudo apt upgrade -y
+         sudo apt install -y python3 git curl patch ccache # Added ccache
 
       - name: Restore ccache
         uses: actions/cache@v3
@@ -104,11 +99,11 @@ jobs:
 
       - name: Install repo tool
         run: |
-          mkdir -p $GITHUB_WORKSPACE/bin
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
-          chmod a+x $GITHUB_WORKSPACE/bin/repo
-          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          repo --version || echo "WARN: repo --version failed after installation attempt."
+         mkdir -p $GITHUB_WORKSPACE/bin
+         curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
+         chmod a+x $GITHUB_WORKSPACE/bin/repo
+         echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+         repo --version || echo "WARN: repo --version failed after installation attempt."
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -116,171 +111,173 @@ jobs:
 
       - name: Initialize repo and sync
         run: |
-          set -e 
-          which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
-          
-          mkdir kernel_workspace && cd kernel_workspace
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
-          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          
+         set -e 
+         which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
+         
+         mkdir kernel_workspace && cd kernel_workspace
+         repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+         repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
+         rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+         rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+         
       - name: Set up SukiSU
         run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
-          cd ./KernelSU
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
-          
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+         curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
+         cd ./KernelSU
+         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
+         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
+        
       - name: Set up susfs
         run: |
-          set -e 
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+           set -e 
+           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
 
-          SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
-          SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
-          SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
+           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
+           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
+           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
 
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
-          if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
+           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
 
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
-          if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
+           git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
 
-          PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
-          EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
+           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
+           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
 
-          if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
-            echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
-            exit 1
-          fi
-          
-          cp "${EXPECTED_PATCH_PATH}" ./common/
-          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
-          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
-          
-          cd ./common 
+           if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
+               echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+               exit 1
+           fi
+           
+           cp "${EXPECTED_PATCH_PATH}" ./common/
+           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
+           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
+           
+           cd ./common 
 
-          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
+           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
 
-          patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
-          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
-          patch -p1 -F 3 < syscall_hooks.patch
-          echo "Finished 'Set up susfs' step."
+           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
+           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
+           patch -p1 -F 3 < syscall_hooks.patch
+           echo "Finished 'Set up susfs' step."
 
       - name: Apply HMBird GKI patch
         run: |
-          set -e
-          echo "Applying HMBird GKI patch..."
-          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          mkdir -p "$HMBIRD_PATCH_DIR" 
-          cd "$HMBIRD_PATCH_DIR"
-          cat << EOF > hmbird_patch.c
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/slab.h>
-#include <linux/string.h>
+         set -e
+         echo "Applying HMBird GKI patch..."
+         HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
+         mkdir -p "$HMBIRD_PATCH_DIR" 
+         cd "$HMBIRD_PATCH_DIR"
+         # Create the hmbird_patch.c file
+         cat << 'EOF' > hmbird_patch.c
+         #include <linux/init.h>
+         #include <linux/module.h>
+         #include <linux/of.h>
+         #include <linux/slab.h>
+         #include <linux/string.h>
 
-static int __init hmbird_patch_init(void)
-{
-    struct device_node *ver_np;
-    const char *type;
-    int ret;
+         static int __init hmbird_patch_init(void)
+         {
+             struct device_node *ver_np;
+             const char *type;
+             int ret;
 
-    ver_np = of_find_node_by_path("/soc/oplus,hmbird/version_type");
-    if (!ver_np) {
-        pr_info("hmbird_patch: version_type node not found, skipping patch.\n");
-        return 0;
-    }
+             ver_np = of_find_node_by_path("/soc/oplus,hmbird/version_type");
+             if (!ver_np) {
+                 pr_info("hmbird_patch: version_type node not found, skipping patch.\n");
+                 return 0;
+             }
 
-    ret = of_property_read_string(ver_np, "type", &type);
-    if (ret) {
-        pr_info("hmbird_patch: type property not found, skipping patch.\n");
-        of_node_put(ver_np);
-        return 0;
-    }
+             ret = of_property_read_string(ver_np, "type", &type);
+             if (ret) {
+                 pr_info("hmbird_patch: type property not found, skipping patch.\n");
+                 of_node_put(ver_np);
+                 return 0;
+             }
 
-    if (strcmp(type, "HMBIRD_OGKI")) {
-        pr_info("hmbird_patch: type is not HMBIRD_OGKI, skipping patch. Current type: %s\n", type);
-        of_node_put(ver_np);
-        return 0;
-    }
+             if (strcmp(type, "HMBIRD_OGKI")) {
+                 pr_info("hmbird_patch: type is not HMBIRD_OGKI, skipping patch. Current type: %s\n", type);
+                 of_node_put(ver_np);
+                 return 0;
+             }
 
-    struct property *prop = of_find_property(ver_np, "type", NULL);
-    if (prop) {
-        char *new_value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
-        if (!new_value) {
-            pr_err("hmbird_patch: kmalloc for new_value failed\n");
-            of_node_put(ver_np);
-            return -ENOMEM;
-        }
-        strcpy(new_value, "HMBIRD_GKI");
+             struct property *prop = of_find_property(ver_np, "type", NULL);
+             if (prop) {
+                 char *new_value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
+                 if (!new_value) {
+                     pr_err("hmbird_patch: kmalloc for new_value failed\n");
+                     of_node_put(ver_np);
+                     return -ENOMEM;
+                 }
+                 strcpy(new_value, "HMBIRD_GKI");
 
-        struct property *new_prop_st = kmalloc(sizeof(*new_prop_st), GFP_KERNEL);
-        if (!new_prop_st) {
-            pr_err("hmbird_patch: kmalloc for new_prop_st failed\n");
-            kfree(new_value);
-            of_node_put(ver_np);
-            return -ENOMEM;
-        }
-        memcpy(new_prop_st, prop, sizeof(*new_prop_st)); 
-        new_prop_st->value = new_value;
-        new_prop_st->length = strlen("HMBIRD_GKI") + 1;
+                 struct property *new_prop_st = kmalloc(sizeof(*new_prop_st), GFP_KERNEL);
+                 if (!new_prop_st) {
+                     pr_err("hmbird_patch: kmalloc for new_prop_st failed\n");
+                     kfree(new_value);
+                     of_node_put(ver_np);
+                     return -ENOMEM;
+                 }
+                 memcpy(new_prop_st, prop, sizeof(*new_prop_st)); 
+                 new_prop_st->value = new_value;
+                 new_prop_st->length = strlen("HMBIRD_GKI") + 1;
 
-        if (of_remove_property(ver_np, prop) != 0) {
-            pr_err("hmbird_patch: of_remove_property failed\n");
-            kfree(new_value);
-            kfree(new_prop_st);
+                 if (of_remove_property(ver_np, prop) != 0) {
+                    pr_err("hmbird_patch: of_remove_property failed\n");
+                    kfree(new_value);
+                    kfree(new_prop_st);
+                    of_node_put(ver_np); 
+                    return -EINVAL; 
+                 }
+                 
+                 if (of_add_property(ver_np, new_prop_st) !=0) {
+                    pr_err("hmbird_patch: of_add_property failed\n");
+                    kfree(new_value); 
+                    kfree(new_prop_st); 
+                    of_node_put(ver_np);
+                    return -EINVAL; 
+                 }
+                 pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
+            } else {
+                 pr_info("hmbird_patch: 'type' property found but could not be read as struct, skipping.\n");
+            }
             of_node_put(ver_np); 
-            return -EINVAL; 
-        }
-        
-        if (of_add_property(ver_np, new_prop_st) != 0) {
-            pr_err("hmbird_patch: of_add_property failed\n");
-            kfree(new_value); 
-            kfree(new_prop_st); 
-            of_node_put(ver_np);
-            return -EINVAL; 
-        }
-        pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
-    } else {
-        pr_info("hmbird_patch: 'type' property found but could not be read as struct, skipping.\n");
-    }
-    of_node_put(ver_np);
-    return 0;
-}
-early_initcall(hmbird_patch_init);
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("reigadegr"); 
-MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
+            return 0;
+            }
+            early_initcall(hmbird_patch_init);
+            MODULE_LICENSE("GPL");
+            MODULE_AUTHOR("reigadegr"); 
+            MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-          if ! grep -q "hmbird_patch.o" Makefile; then
-            echo "obj-y += hmbird_patch.o" >> Makefile
-            echo "HMBird patch added to drivers/Makefile."
-          else
-            echo "HMBird patch already in drivers/Makefile."
-          fi
-          # Commit the changes to the source tree so they are included in the build
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
+         if ! grep -q "hmbird_patch.o" Makefile; then
+           echo "obj-y += hmbird_patch.o" >> Makefile
+           echo "HMBird patch added to drivers/Makefile."
+         else
+           echo "HMBird patch already in drivers/Makefile."
+         fi
+         # Commit the changes to the source tree so they are included in the build
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
+         if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
+            echo "Committing HMBird patch changes..."
             git add common/drivers/hmbird_patch.c common/drivers/Makefile
             git commit -m "Add HMBird GKI patch module"
-          else
+         else
             echo "No new HMBird files or Makefile changes to commit."
-          fi
-          echo "Finished HMBird GKI patch application and commit."
+         fi
+         echo "Finished HMBird GKI patch application and commit."
 
       - name: Apply lz4kd Patches
-        if: ${{ github.event.inputs.enable_feature_y }}
+        if: ${{inputs.enable_feature_y }}
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
@@ -355,7 +352,7 @@ EOF
           git add -A && git commit -m "Update defconfig with all features and precise custom kernel name" --allow-empty || echo "No defconfig changes to commit."
       
       - name: Add KPM Configuration Settings
-        if: ${{ github.event.inputs.enable_feature_x }}
+        if: ${{inputs.enable_feature_x }}
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
@@ -376,14 +373,14 @@ EOF
           fi
                  
       - name: Add sched_ext (FengChi driver)
-        if: ${{ github.event.inputs.enable_feature_z }}
+        if: ${{inputs.enable_feature_z }}
         run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
-          git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
-          cp -r ./sched_ext_temp/* ./common/kernel/sched
-          rm -rf ./sched_ext_temp
-          
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
+         
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ github.event.inputs.KERNEL_TIME }}" +%s)
@@ -391,46 +388,52 @@ EOF
           
       - name: Build Kernel
         run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
-          export PATH="/usr/lib/ccache:$PATH"
-          echo "Using CCACHE directory: $CCACHE_DIR"
-          echo "Ccache statistics before build:"
-          ccache -s
+           set -e
+           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+           export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+           export PATH="/usr/lib/ccache:$PATH" 
+           echo "Using CCACHE directory: $CCACHE_DIR"
+           echo "Ccache statistics before build:"
+           ccache -s
 
-          tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
-          
-          echo "Ccache statistics after build:"
-          ccache -s
+           tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
+           
+           echo "Ccache statistics after build:"
+           ccache -s
 
       - name: Make AnyKernel3 (Patch Image)
         run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
-          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
-          chmod +x patch_linux
-          ./patch_linux
-          rm -f Image
-          mv oImage Image
-          
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+         curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
+         chmod +x patch_linux
+         ./patch_linux
+         rm -f Image
+         mv oImage Image
+         
       - name: Prepare AnyKernel3 Zip
         run: |
-          set -e
-          cd $GITHUB_WORKSPACE 
-          git clone https://github.com/Kernel-SU/AnyKernel3.git AnyKernel3_Package --depth=1      
-          rm -rf ./AnyKernel3_Package/.git
-          rm -rf ./AnyKernel3_Package/push.sh
-          
-          cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
-          
-          cd AnyKernel3_Package
-          zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
-          cd ..
+         set -e
+         cd $GITHUB_WORKSPACE 
+         git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
+         rm -rf ./AnyKernel3_Package/.git
+         rm -rf ./AnyKernel3_Package/push.sh
+         
+         cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+         
+         cd AnyKernel3_Package
+         zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
+         cd ..
 
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
-          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
-          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
-```
+         name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
+         path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
+         
+      - name: Upload Raw Image
+        if: success() 
+        uses: actions/upload-artifact@v4
+        with:
+         name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
+         path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
