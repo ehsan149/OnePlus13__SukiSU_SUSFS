@@ -23,13 +23,13 @@ on:
         required: true
         default: '6.6'
       KERNEL_NAME: 
-        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
+        description: "Custom kernel name (e.g., -By-Ehsan149-4k)" 
         required: true
         default: '-By-Ehsan149-4k' 
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: 'Tue Dec 17 23:36:49 UTC 2024' # Date format from HanKuCha
+       default: 'Tue Dec 17 23:36:49 UTC 2024'
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -41,7 +41,7 @@ on:
        default: false
        type: boolean
       enable_feature_z:
-       description: "Enable FengChi driver (sched_ext)" 
+       description: "Enable FengChi driver (sched_ext)"
        required: false
        default: false
        type: boolean
@@ -53,8 +53,8 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache  # CCACHE Directory
-      CCACHE_MAXSIZE: 8G             # CCACHE Max Size
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 8G
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
-         sudo apt install -y python3 git curl patch ccache # Added ccache
+         sudo apt install -y python3 git curl patch ccache libelf-dev
 
       - name: Restore ccache
         uses: actions/cache@v3
@@ -178,7 +178,6 @@ jobs:
          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
          mkdir -p "$HMBIRD_PATCH_DIR" 
          cd "$HMBIRD_PATCH_DIR"
-         # Create the hmbird_patch.c file
          cat << 'EOF' > hmbird_patch.c
          #include <linux/init.h>
          #include <linux/module.h>
@@ -251,7 +250,7 @@ jobs:
             } else {
                  pr_info("hmbird_patch: 'type' property found but could not be read as struct, skipping.\n");
             }
-            of_node_put(ver_np); 
+            of_node_put(ver_np);
             return 0;
             }
             early_initcall(hmbird_patch_init);
@@ -266,9 +265,8 @@ EOF
            echo "HMBird patch already in drivers/Makefile."
          fi
          # Commit the changes to the source tree so they are included in the build
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
          if git status --porcelain | grep -q "common/drivers/hmbird_patch.c\|common/drivers/Makefile"; then
-            echo "Committing HMBird patch changes..."
             git add common/drivers/hmbird_patch.c common/drivers/Makefile
             git commit -m "Add HMBird GKI patch module"
          else
@@ -391,7 +389,7 @@ EOF
            set -e
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
-           export PATH="/usr/lib/ccache:$PATH" 
+           export PATH="/usr/lib/ccache:$PATH"
            echo "Using CCACHE directory: $CCACHE_DIR"
            echo "Ccache statistics before build:"
            ccache -s
@@ -415,7 +413,7 @@ EOF
         run: |
          set -e
          cd $GITHUB_WORKSPACE 
-         git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
+         git clone https://github.com/Kernel-SU/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
          
@@ -430,10 +428,3 @@ EOF
         with:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
-         
-      - name: Upload Raw Image
-        if: success() 
-        uses: actions/upload-artifact@v4
-        with:
-         name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-         path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
