@@ -1,4 +1,4 @@
-name: OnePlus 13 Build  v3
+name: OnePlus 13 Build v3
 on:
   workflow_dispatch:
     inputs:
@@ -263,7 +263,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("reigadegr"); 
 MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
 EOF
-          # The above EOF marker MUST be at the beginning of the line, with no preceding spaces.
+          # The above EOF marker MUST be at the very beginning of its line, with no preceding spaces.
           
           if [ -f "Makefile" ]; then
               if ! grep -q "hmbird_patch.o" Makefile; then
