@@ -52,8 +52,8 @@ static int __init hmbird_patch_init(void)
 
         if (of_remove_property(ver_np, prop) != 0) {
            pr_err("hmbird_patch: of_remove_property failed\n");
-           kfree(new_value);
-           kfree(new_prop_st);
+           kfree(new_value); 
+           kfree(new_prop_st); 
            of_node_put(ver_np); 
            return -EINVAL; 
         }
