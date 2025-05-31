@@ -29,7 +29,7 @@ on:
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
-       default: '2024-12-17 23:36:49 UTC' # Reverted to user's preferred date format
+       default: '2024-12-17 23:36:49 UTC' # User's preferred date format
       enable_feature_x:
        description: "Enable KPM support"
        required: false
@@ -193,18 +193,18 @@ jobs:
           echo "hmbird_patch.c copied to drivers directory."
           
           cd "$HMBIRD_PATCH_DIR"
-          if [ -f "Makefile" ]; then
-              if ! grep -q "hmbird_patch.o" Makefile; then
-                echo "obj-y += hmbird_patch.o" >> Makefile
-                echo "HMBird patch object added to drivers/Makefile."
-              else
-                echo "HMBird patch object already in drivers/Makefile."
-              fi
+          # Ensure Makefile exists before attempting to modify it
+          if [ ! -f "Makefile" ]; then
+            echo "obj-y += hmbird_patch.o" > Makefile
+            echo "Created drivers/Makefile and added HMBird patch object."
+          elif ! grep -q "hmbird_patch.o" Makefile; then
+            echo "obj-y += hmbird_patch.o" >> Makefile
+            echo "HMBird patch object added to existing drivers/Makefile."
           else
-              echo "obj-y += hmbird_patch.o" > Makefile
-              echo "Created drivers/Makefile and added HMBird patch object."
+            echo "HMBird patch object already in drivers/Makefile."
           fi
           
+          # Commit changes within the kernel_platform git repository (local to the runner)
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
           if ! git diff --quiet HEAD -- common/drivers/hmbird_patch.c common/drivers/Makefile; then
              echo "Committing HMBird GKI patch module to local kernel source tree..."
@@ -376,4 +376,3 @@ jobs:
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
-         
