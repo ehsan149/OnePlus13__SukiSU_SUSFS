@@ -68,18 +68,6 @@ jobs:
           
       - name: Check out repository code
         uses: actions/checkout@v4
-
-      - name: List files in GITHUB_WORKSPACE after checkout and maximize space
-        run: |
-          echo "Listing GITHUB_WORKSPACE root (after maximize space and checkout):"
-          ls -la $GITHUB_WORKSPACE
-          echo "Listing kernel_addons directory if it exists:"
-          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
-          if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
-            echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
-          else
-            echo "hmbird_patch.c NOT FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
-          fi
           
       - name: Configure Git
         run: |
@@ -104,7 +92,7 @@ jobs:
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
-          echo "No ccache found, or cache is for a different commit. Initializing ccache."
+          echo "Initializing ccache..." # Simplified message
           ccache -Cz 
           ccache -M ${{ env.CCACHE_MAXSIZE }}
           echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
@@ -196,7 +184,7 @@ jobs:
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
 
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
-            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found right before cp command!"
+            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found!" # Simplified error
             exit 1
           fi
           
@@ -358,19 +346,20 @@ jobs:
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
-         echo "DEBUG: Files in dist before patch_linux:"
-         ls -la
+         # Debugging ls commands can be removed if the process is stable
+         # echo "DEBUG: Files in dist before patch_linux:"
+         # ls -la
          ./patch_linux
-         echo "DEBUG: Files in dist after patch_linux:"
-         ls -la
+         # echo "DEBUG: Files in dist after patch_linux:"
+         # ls -la
          if [ -f "oImage" ]; then
            rm -f Image 
            mv oImage Image
-           echo "DEBUG: oImage moved to Image. Files in dist now:"
-           ls -la
+           # echo "DEBUG: oImage moved to Image. Files in dist now:"
+           # ls -la
          else
-           echo "DEBUG: oImage not found. Assuming patch_linux modified Image in-place or did not create oImage."
-           ls -la # Show files again
+           echo "WARN: oImage not found. Assuming patch_linux modified Image in-place or did not create oImage." # Changed to WARN
+           # ls -la # Show files again
          fi
          
       - name: Prepare AnyKernel3 Zip
@@ -381,8 +370,9 @@ jobs:
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
          
-         echo "DEBUG: Checking for Image in $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before copying to AnyKernel3_Package:"
-         ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+         # Debugging ls and check can be removed if the process is stable
+         # echo "DEBUG: Checking for Image in $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before copying to AnyKernel3_Package:"
+         # ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          if [ -f "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image" ]; then
            cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
            echo "Image copied to AnyKernel3_Package."
@@ -401,17 +391,4 @@ jobs:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
          
-      # Raw Image upload steps removed as per user observation of HanKuCha's script and to avoid warning.
-      # If raw image is needed, uncomment the following two steps and ensure the path is correct.
-      # - name: List dist directory before Raw Image Upload
-      #   run: |
-      #     echo "DEBUG: Listing contents of $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before uploading Raw Image:"
-      #     ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
-      
-      # - name: Upload Raw Image
-      #   if: success() 
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #    name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-      #    path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
-      
+      # Raw Image upload steps removed      
