@@ -400,26 +400,18 @@ jobs:
         with:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
+         
+      # Raw Image upload steps removed as per user observation of HanKuCha's script and to avoid warning.
+      # If raw image is needed, uncomment the following two steps and ensure the path is correct.
+      # - name: List dist directory before Raw Image Upload
+      #   run: |
+      #     echo "DEBUG: Listing contents of $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before uploading Raw Image:"
+      #     ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
       
-      # New step to copy Image to a simpler path before uploading
-      - name: Copy Processed Image for Raw Upload
-        if: success()
-        run: |
-          echo "Copying final Image to workspace root for upload..."
-          PROCESSED_IMAGE_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image"
-          if [ -f "$PROCESSED_IMAGE_PATH" ]; then
-            cp "$PROCESSED_IMAGE_PATH" "$GITHUB_WORKSPACE/Image_to_upload.img"
-            echo "Image copied to $GITHUB_WORKSPACE/Image_to_upload.img"
-            ls -la $GITHUB_WORKSPACE/Image_to_upload.img
-          else
-            echo "WARN: Processed Image at $PROCESSED_IMAGE_PATH not found. Cannot copy for raw upload."
-          fi
-         
-      - name: Upload Raw Image
-        if: success() 
-        uses: actions/upload-artifact@v4
-        with:
-         name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-         path: $GITHUB_WORKSPACE/Image_to_upload.img # Updated path
-         if-no-files-found: warn # Keep as warn for now, can change to error if preferred
-         
+      # - name: Upload Raw Image
+      #   if: success() 
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #    name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
+      #    path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
+      
