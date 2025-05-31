@@ -23,9 +23,9 @@ on:
         required: true
         default: '6.6'
       KERNEL_NAME:
-        description: "Custom kernel name"
+        description: "Custom kernel name (e.g., -By-Ehsan149-4k)" 
         required: true
-        default: '-By-Ehsan149'
+        default: '-By-Ehsan149-4k' 
       KERNEL_TIME:
        description: "Custom kernel build time (default: factory)"
        required: true
@@ -57,24 +57,6 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: List GITHUB_WORKSPACE contents after checkout
-        run: |
-          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after checkout:"
-          ls -la $GITHUB_WORKSPACE
-
-      - name: Temporarily Preserve Custom Patches
-        run: |
-          echo "Creating temporary holding for custom patches..."
-          if [ -d "$GITHUB_WORKSPACE/custom_patches" ]; then
-            mkdir -p /tmp/my_preserved_patches
-            cp -r $GITHUB_WORKSPACE/custom_patches/* /tmp/my_preserved_patches/
-            echo "Custom patches temporarily preserved in /tmp/my_preserved_patches:"
-            ls -la /tmp/my_preserved_patches
-          else
-            echo "ERROR: $GITHUB_WORKSPACE/custom_patches directory not found after checkout!"
-            exit 1
-          fi
-
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -84,13 +66,6 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-
-      - name: List GITHUB_WORKSPACE contents after Maximize Space
-        run: |
-          echo "Listing contents of GITHUB_WORKSPACE ($GITHUB_WORKSPACE) after Maximize Space:"
-          ls -la $GITHUB_WORKSPACE
-          echo "Checking if /tmp/my_preserved_patches still exists:"
-          ls -la /tmp/my_preserved_patches || echo "/tmp/my_preserved_patches not found (this is unexpected)"
           
       - name: Configure Git
         run: |
@@ -108,7 +83,6 @@ jobs:
          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
          chmod a+x $GITHUB_WORKSPACE/bin/repo
          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-         echo "REPO_TOOL_PATH=$GITHUB_WORKSPACE/bin/repo" >> $GITHUB_ENV
          repo --version || echo "WARN: repo --version failed after installation attempt."
 
       - name: Clone TheWildJames Patches Repo
@@ -125,17 +99,6 @@ jobs:
          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-
-         echo "Moving preserved patches into kernel_platform..."
-         if [ -d "/tmp/my_preserved_patches" ]; then
-           mkdir -p kernel_platform/my_local_patches 
-           cp -r /tmp/my_preserved_patches/* kernel_platform/my_local_patches/
-           echo "Patches moved to kernel_platform/my_local_patches:"
-           ls -la kernel_platform/my_local_patches
-         else
-           echo "ERROR: /tmp/my_preserved_patches not found! Cannot move patches."
-           exit 1
-         fi
          
       - name: Set up SukiSU
         run: |
@@ -143,78 +106,47 @@ jobs:
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
          cd ./KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
+         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
         
       - name: Set up susfs
         run: |
            set -e 
-           echo "--- Set up susfs ---"
-           echo "Initial CWD for 'Set up susfs' step: $(pwd)"
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-           echo "CWD after cd to kernel_platform: $(pwd)"
 
            SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
            SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
            SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
 
-           echo "Attempting to clone susfs4ksu (branch: ${SUSFS_BRANCH}) to ${SUSFS_CLONE_TARGET_REL}"
            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
-           
-           echo "Checking existence of cloned susfs4ksu directory: ${SUSFS_CLONE_TARGET_REL} (absolute: $(realpath "${SUSFS_CLONE_TARGET_REL}") )"
-           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then
-             echo "ERROR: Directory ${SUSFS_CLONE_TARGET_REL} does not exist after clone attempt!"
-             echo "Listing contents of parent directory (../ -> $(realpath ../) ):"
-             ls -la ../
-             exit 1
-           fi
-           echo "Listing contents of ${SUSFS_CLONE_TARGET_REL}:"
-           ls -la "${SUSFS_CLONE_TARGET_REL}"
-           echo "Listing contents of ${SUSFS_CLONE_TARGET_REL}/kernel_patches/:"
-           ls -la "${SUSFS_CLONE_TARGET_REL}/kernel_patches/"
+           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
 
-           echo "Attempting to clone SukiSU_patch to ${SUKISU_PATCH_CLONE_TARGET_REL}"
            git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
-           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then
-             echo "ERROR: Directory ${SUKISU_PATCH_CLONE_TARGET_REL} does not exist after clone attempt!"
-             exit 1
-           fi
+           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
 
            PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
            EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
-           echo "Expected patch file path: ${EXPECTED_PATCH_PATH}"
 
            if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
                echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
-               echo "Double check the patch file name and its existence in the cloned susfs4ksu repo for branch ${SUSFS_BRANCH}."
                exit 1
            fi
            
-           echo "Copying SUSFS patch ${EXPECTED_PATCH_PATH} to ./common/"
            cp "${EXPECTED_PATCH_PATH}" ./common/
-           
-           echo "Copying other SUSFS files..."
            cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
            cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
-           
-           echo "Copying SukiSU_patch files for lz4k..."
            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
            
            cd ./common 
-           echo "Changed directory to: $(pwd) for patching"
 
-           echo "Modifying SUSFS patch file: ${PATCH_FILE_NAME}"
            sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
            sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
 
-           echo "Applying modified SUSFS patch..."
-           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly after sed modifications."
-           
-           echo "Copying and applying SukiSU syscall_hooks.patch..."
+           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
            cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
            patch -p1 -F 3 < syscall_hooks.patch
            echo "Finished 'Set up susfs' step."
@@ -226,12 +158,24 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch failed."
-           
-      - name: Add Kernel Configuration Settings
+      
+      - name: Apply ECN and TCP Pacing Tweaks via SED
+        run: |
+          set -e
+          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
+
+          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
+          echo "ECN and TCP Pacing tweaks successfully applied via SED."
+          
+      - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
+          # Defconfig additions
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -270,9 +214,17 @@ jobs:
             echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> ./common/arch/arm64/configs/gki_defconfig
           fi
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+          # Kernel Name defconfig settings - For precise kernel name
+          echo "Modifying defconfig for custom kernel name..."
+          sed -i '/CONFIG_LOCALVERSION_AUTO/d' ./common/arch/arm64/configs/gki_defconfig 
+          sed -i '/CONFIG_LOCALVERSION=/d' ./common/arch/arm64/configs/gki_defconfig 
+          echo "CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\"" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\""
+
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -a -m "Update defconfig with SukiSU and new features" || echo "No changes to commit in common for defconfig."
+          git add -A && git commit -a -m "Update defconfig with all features and precise custom kernel name" || echo "No defconfig changes to commit."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
@@ -282,50 +234,15 @@ jobs:
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit in common for KPM."
-
-      # NEW STEP: Display relevant section of tcp_ipv4.c before applying custom patches
-      - name: Display ECN/TCP Pacing relevant code from tcp_ipv4.c
-        run: |
-          set -e
-          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
-          if [ -f "$TCP_IPV4_PATH" ]; then
-            echo "--- Relevant section from $TCP_IPV4_PATH for ECN patch ---"
-            grep -C 7 "sysctl_tcp_ecn *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_ecn =' not found or grep failed."
-            echo "--- Relevant section from $TCP_IPV4_PATH for TCP Pacing patch ---"
-            grep -C 7 "sysctl_tcp_pacing_ss_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ss_ratio =' not found or grep failed."
-            grep -C 7 "sysctl_tcp_pacing_ca_ratio *=" "$TCP_IPV4_PATH" || echo "INFO: 'sysctl_tcp_pacing_ca_ratio =' not found or grep failed."
-          else
-            echo "ERROR: $TCP_IPV4_PATH not found!"
-            exit 1
-          fi
-
-      - name: Apply Custom ECN and TCP Pacing Patches
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          echo "Applying custom patches from ../my_local_patches/"
-          ls -la ../my_local_patches/ 
-
-          cp ../my_local_patches/force_ecn.patch ./
-          patch -p1 --no-backup-if-mismatch < force_ecn.patch || echo "WARN: force_ecn.patch failed."
-          
-          cp ../my_local_patches/tcp_pacing.patch ./
-          patch -p1 --no-backup-if-mismatch < tcp_pacing.patch || echo "WARN: tcp_pacing.patch failed."
+          git add -A && git commit -a -m "Add KPM config" || echo "No KPM changes to commit."
 
       - name: Apply Hide Stuff Patch
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed."
-          
-      - name: Add make name
-        run: |
-         set -e
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-         sed -i "s/^\(res=\"\${res}\)\(\$(cat \"\${file}\")\)\"$/\1\2${{ github.event.inputs.KERNEL_NAME }}\"/" ./common/scripts/setlocalversion || echo "Failed to modify setlocalversion"
-
+          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
+                 
       - name: Add sched_ext (FengChi driver)
         if: ${{inputs.enable_feature_z }}
         run: |
