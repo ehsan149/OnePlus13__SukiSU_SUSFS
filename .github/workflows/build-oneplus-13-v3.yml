@@ -193,7 +193,7 @@ jobs:
           set -e
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
+          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
 
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
             echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found right before cp command!"
@@ -352,7 +352,7 @@ jobs:
            echo "Ccache statistics after build:"
            ccache -s
 
-      - name: Make AnyKernel3 (Patch Image) # ADDED DEBUGGING FOR IMAGE
+      - name: Make AnyKernel3 (Patch Image)
         run: |
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
@@ -373,7 +373,7 @@ jobs:
            ls -la # Show files again
          fi
          
-      - name: Prepare AnyKernel3 Zip # ADDED DEBUGGING FOR IMAGE
+      - name: Prepare AnyKernel3 Zip
         run: |
          set -e
          cd $GITHUB_WORKSPACE 
@@ -400,16 +400,26 @@ jobs:
         with:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
-         
-      - name: List dist directory before Raw Image Upload # NEW DEBUG STEP
-        run: |
-          echo "DEBUG: Listing contents of $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before uploading Raw Image:"
-          ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
       
+      # New step to copy Image to a simpler path before uploading
+      - name: Copy Processed Image for Raw Upload
+        if: success()
+        run: |
+          echo "Copying final Image to workspace root for upload..."
+          PROCESSED_IMAGE_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image"
+          if [ -f "$PROCESSED_IMAGE_PATH" ]; then
+            cp "$PROCESSED_IMAGE_PATH" "$GITHUB_WORKSPACE/Image_to_upload.img"
+            echo "Image copied to $GITHUB_WORKSPACE/Image_to_upload.img"
+            ls -la $GITHUB_WORKSPACE/Image_to_upload.img
+          else
+            echo "WARN: Processed Image at $PROCESSED_IMAGE_PATH not found. Cannot copy for raw upload."
+          fi
+         
       - name: Upload Raw Image
         if: success() 
         uses: actions/upload-artifact@v4
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-         path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
+         path: $GITHUB_WORKSPACE/Image_to_upload.img # Updated path
+         if-no-files-found: warn # Keep as warn for now, can change to error if preferred
          
