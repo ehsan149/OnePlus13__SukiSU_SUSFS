@@ -36,7 +36,7 @@ on:
        default: false
        type: boolean
       enable_feature_y: # LZ4KD for ZRAM
-       description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
+       description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+). If unchecked, ZRAM uses standard LZ4." 
        required: false
        default: false 
        type: boolean
@@ -105,31 +105,6 @@ jobs:
           echo "Initial Ccache statistics:"
           ccache -s
 
-      - name: Cache Toolchain
-        id: cache-toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            kernel-build-tools 
-            mkbootimg 
-          key: toolchain-${{ runner.os }}-gki-v1 # Specific key for GKI tools
-
-      - name: Download Toolchain (if not cached)
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
-        run: |
-          echo "Toolchain cache not found. Downloading..."
-          AOSP_MIRROR=https://android.googlesource.com
-          # Using a common GKI build tools branch, adjust if needed for your specific Bazel setup
-          # Your Bazel setup likely pulls its own prebuilts, this is a fallback/example
-          # If your Bazel setup already includes these tools, this step might be redundant or could be adapted
-          git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b common-kernel-build-2023 --depth 1 kernel-build-tools
-          git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b main --depth 1 mkbootimg # main is often the latest
-          echo "Toolchain downloaded."
-        # Note: Your Bazel build likely uses prebuilts defined within its WORKSPACE or aosp_prebuilts.
-        # This step is more relevant for 'make' based builds like FerGus786's.
-        # For Bazel, ensure your kernel_platform/prebuilts are correctly synced by 'repo sync'.
-        # You can remove this "Download Toolchain" step if Bazel handles it.
-
       - name: Install repo tool
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin
@@ -192,7 +167,12 @@ jobs:
           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/ # Consider if this conflicts with LZ4KD if enabled
+          if ! ${{ inputs.enable_feature_y }}; then # Only copy lz4k_oplus if LZ4KD is NOT enabled
+            echo "LZ4KD is disabled, copying lz4k_oplus."
+            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
+          else
+            echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
+          fi
           
           cd ./common 
 
@@ -249,6 +229,10 @@ jobs:
           set -e
           echo "LZ4KD for ZRAM is enabled. Applying patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then # Ensure SukiSU_patch exists if not cloned earlier
+            echo "Cloning SukiSU_patch for LZ4KD patch..."
+            git clone https://github.com/ShirkNeko/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
+          fi
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
       
@@ -352,7 +336,6 @@ jobs:
           echo "CONFIG_CRYPTO_LIB_POLY1305=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
 
-
           # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
@@ -377,8 +360,6 @@ jobs:
 
       - name: Apply Hide Stuff Patch 
         run: |
-          # TODO: Review and potentially add more specific hide patches if 69_hide_stuff.patch is not sufficient
-          # for LineageOS or jit-zygote-cache detections, based on ShirkNeko/SukiSU_patch if available.
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
@@ -444,13 +425,13 @@ jobs:
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
-         if ${{ inputs.enable_feature_x }}; then # KPM
+         if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
          fi
-         if ${{ inputs.enable_feature_z }}; then # FengChi
+         if ${{ inputs.enable_feature_z }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" # Your suffix
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
 
          echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
          echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
@@ -471,11 +452,10 @@ jobs:
          zip -r9 "../${FINAL_ZIP_NAME}" .
          cd ..
         env:
-          KSUVER: ${{ env.KSUVER }} 
+          KSUVER: ${{ env.KSUVER }} # Pass KSUVER from GITHUB_ENV to this script's environment
 
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
-         path: ${{ steps.prepare_zip.outputs.zip_filename }}
-         
+         path: ${{ steps.prepare_zip.outputs.zip_filename }}       
