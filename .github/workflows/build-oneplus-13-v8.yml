@@ -40,17 +40,12 @@ on:
        required: false
        default: false 
        type: boolean
-      enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext)" 
-       required: false
-       default: true # Now enabled by default based on recent findings
-       type: boolean
       enable_esim:
        description: "Attempt to enable eSIM support (for Global devices)"
        required: false
-       default: true # Enable by default as it should be safe for CN devices
+       default: true 
        type: boolean
-
+      
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -192,7 +187,6 @@ jobs:
       - name: Apply HMBird GKI patch
         run: |
           set -e
-          # ... (محتوای این مرحله بدون تغییر) ...
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
@@ -245,7 +239,6 @@ jobs:
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
-          # ... (محتوای این مرحله بدون تغییر) ...
           TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
 
@@ -254,13 +247,29 @@ jobs:
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
+      - name: Add sched_ext (FengChi driver)
+        # Condition removed, always included based on HanKuCha's latest changelog
+        run: |
+         set -e
+         echo "Adding sched_ext (FengChi driver)..."
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common 
+         if git status --porcelain | grep -q "kernel/sched"; then 
+            git add kernel/sched/
+            git commit -m "Add/Update sched_ext (FengChi driver)"
+         else
+            echo "No changes in kernel/sched to commit for sched_ext."
+         fi
+
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
-          # ... (تمام تنظیمات قبلی KSU, SUSFS, Crypto, Network, ZRAM, Hibernation, TMPFS) ...
           # Base KSU and SUSFS configs
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
@@ -336,19 +345,21 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
 
-          # Wireguard Support
-          echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_CRYPTO_LIB_CHACHA20POLY1305=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_CRYPTO_LIB_POLY1305=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
-          
-          # eSIM Support (if enabled)
+          # Wireguard and eSIM Support
           if ${{ inputs.enable_esim }}; then
-            echo "# eSIM Support" >> "${DEFCONFIG_PATH}"
+            echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_CHACHA20POLY1305=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_POLY1305=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_EUICC_GSMA=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_EUICC_HTTP=y" >> "${DEFCONFIG_PATH}"
+          else
+            echo "# eSIM and Wireguard support disabled by user" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
           fi
 
           # Kernel Name defconfig settings
@@ -386,24 +397,6 @@ jobs:
             echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
           fi
                  
-      - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z == true }} # Kept as optional for now
-        run: |
-         # ... (محتوای این مرحله بدون تغییر) ...
-         set -e
-         echo "Adding sched_ext (FengChi driver)..."
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
-         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
-         cp -r ./sched_ext_temp/* ./common/kernel/sched
-         rm -rf ./sched_ext_temp
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common 
-         if git status --porcelain | grep -q "kernel/sched"; then 
-            git add kernel/sched/
-            git commit -m "Add/Update sched_ext (FengChi driver)"
-         else
-            echo "No changes in kernel/sched to commit for sched_ext."
-         fi
-         
       - name: Set Kernel build timestamp
         run: |
           # ... (محتوای این مرحله بدون تغییر) ...
@@ -444,7 +437,6 @@ jobs:
       - name: Prepare AnyKernel3 Zip
         id: prepare_zip 
         run: |
-         # ... (محتوای این مرحله بدون تغییر، فقط نام فایل پویا اصلاح شده) ...
          set -e
          cd $GITHUB_WORKSPACE 
          
@@ -457,12 +449,9 @@ jobs:
          if ${{ inputs.enable_esim }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN_FengChi" # FengChi is now always included
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
-         fi
-         if ${{ inputs.enable_feature_z }}; then 
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
 
@@ -492,3 +481,4 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
