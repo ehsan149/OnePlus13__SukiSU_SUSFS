@@ -41,7 +41,7 @@ on:
        default: false 
        type: boolean
       enable_esim:
-       description: "Attempt to enable eSIM support (for Global devices)"
+       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
        type: boolean
@@ -187,6 +187,7 @@ jobs:
       - name: Apply HMBird GKI patch
         run: |
           set -e
+          # ... (Content of this step is unchanged) ...
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
@@ -239,6 +240,7 @@ jobs:
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
+          # ... (Content of this step is unchanged) ...
           TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
 
@@ -270,6 +272,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
+          # ... (All previous KSU, SUSFS, Crypto, Network, ZRAM, Hibernation, TMPFS configs) ...
           # Base KSU and SUSFS configs
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
@@ -377,7 +380,7 @@ jobs:
       - name: Add KPM Configuration Settings
         if: ${{ inputs.enable_feature_x == true }}
         run: |
-          # ... (محتوای این مرحله بدون تغییر) ...
+          # ... (Content of this step is unchanged) ...
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -387,7 +390,7 @@ jobs:
 
       - name: Apply Hide Stuff Patch 
         run: |
-          # ... (محتوای این مرحله بدون تغییر) ...
+          # ... (Content of this step is unchanged) ...
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
@@ -399,13 +402,13 @@ jobs:
                  
       - name: Set Kernel build timestamp
         run: |
-          # ... (محتوای این مرحله بدون تغییر) ...
+          # ... (Content of this step is unchanged) ...
           export SOURCE_DATE_EPOCH=$(date -d "${{ github.event.inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           
       - name: Build Kernel
         run: |
-           # ... (محتوای این مرحله بدون تغییر) ...
+           # ... (Content of this step is unchanged) ...
            set -e
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
@@ -421,7 +424,7 @@ jobs:
 
       - name: Make AnyKernel3 (Patch Image)
         run: |
-         # ... (محتوای این مرحله بدون تغییر) ...
+         # ... (Content of this step is unchanged) ...
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
@@ -440,7 +443,7 @@ jobs:
          set -e
          cd $GITHUB_WORKSPACE 
          
-         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
+         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}_FengChi_BBR_ECN" 
          if ${{ inputs.enable_feature_y }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
          else
@@ -449,7 +452,6 @@ jobs:
          if ${{ inputs.enable_esim }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN_FengChi" # FengChi is now always included
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
          fi
