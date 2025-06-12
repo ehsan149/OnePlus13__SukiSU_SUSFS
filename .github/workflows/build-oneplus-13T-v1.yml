@@ -3,17 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "Select compilation CPU type (e.g., sm8750 for sun)"
+        description: "Select compilation CPU type"
         required: true
-        default: 'sm8750' # Should be the same as OP13 if SoC is the same
+        default: 'sm8750' 
       FEIL:
-        description: "Device configuration (manifest file name)"
+        description: "Device configuration"
         required: true
-        default: 'oneplus_13t' # Changed for OnePlus 13t
+        default: 'oneplus_13t' 
       CPUD:
         description: "Processor codename"
         required: true
-        default: 'sun' # Assuming the same SoC, this might be the same. Verify if needed.
+        default: 'sun'
       ANDROID_VERSION:
         description: "Kernel Android Version"
         required: true
@@ -40,8 +40,13 @@ on:
        required: false
        default: false 
        type: boolean
-      enable_esim_and_nfc:
-       description: "Attempt to enable eSIM, Wireguard, and NFC support (for Global devices)"
+      enable_feature_z: # FengChi driver
+       description: "Enable FengChi driver (sched_ext)"
+       required: false
+       default: false
+       type: boolean
+      enable_esim_and_wireguard:
+       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
        type: boolean
@@ -87,10 +92,10 @@ jobs:
         id: ccache 
         with:
           path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
+          key: ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.ref }}-
-            ccache-${{ runner.os }}-
+            ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-
+            ccache-${{ inputs.FEIL }}-${{ runner.os }}-
       
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
@@ -276,7 +281,19 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
-          # ... (and all other SUSFS configs) ...
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
 
           # Crypto and Network Optimizations
@@ -290,7 +307,12 @@ jobs:
           echo "CONFIG_NET_SCH_FQ=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_DEFAULT_FQ=y" >> "${DEFCONFIG_PATH}" 
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "${DEFCONFIG_PATH}"
-          # ... (and other TCP cong configs) ...
+          echo "CONFIG_TCP_CONG_BIC=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}" 
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}" 
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
           
           # ZRAM Compression Settings
@@ -403,6 +425,7 @@ jobs:
         run: |
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+         # Use the latest version of patch_linux as per HanKuCha's latest update
          curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.11.4/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -428,12 +451,13 @@ jobs:
          if ${{ inputs.enable_esim_and_nfc }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM_NFC"
          fi
+         # sched_ext (FengChi) is now optional again
+         if ${{ inputs.enable_feature_z }}; then 
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
+         fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
-         fi
-         if ${{ inputs.enable_feature_z }}; then 
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
 
