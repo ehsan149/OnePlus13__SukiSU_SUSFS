@@ -346,7 +346,7 @@ jobs:
 
           # Wireguard and eSIM Support
           if ${{ inputs.enable_esim_and_nfc }}; then
-            echo "# eSIM, Wireguard, and NFC Dependencies" >> "${DEFCONFIG_PATH}"
+            echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}" 
@@ -355,15 +355,10 @@ jobs:
             echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_EUICC_GSMA=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_EUICC_HTTP=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_HCI=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_DIGITAL=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_SE_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
           else
-            echo "# eSIM, Wireguard, and NFC support disabled by user" >> "${DEFCONFIG_PATH}"
+            echo "# eSIM and Wireguard support disabled by user" >> "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
-            sed -i '/CONFIG_NFC/d' "${DEFCONFIG_PATH}"
           fi
 
           # Kernel Name defconfig settings
@@ -446,7 +441,7 @@ jobs:
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
          if ${{ inputs.enable_esim_and_nfc }}; then
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM_NFC"
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
@@ -479,4 +474,5 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
