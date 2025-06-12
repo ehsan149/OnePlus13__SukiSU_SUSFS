@@ -40,8 +40,13 @@ on:
        required: false
        default: false 
        type: boolean
-      enable_esim_and_nfc:
-       description: "Attempt to enable eSIM, Wireguard, and NFC support (for Global devices)"
+      enable_feature_z: # FengChi driver
+       description: "Enable FengChi driver (sched_ext)"
+       required: false
+       default: false
+       type: boolean
+      enable_esim_and_wireguard: # Renamed to be more accurate
+       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
        type: boolean
@@ -248,7 +253,7 @@ jobs:
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add sched_ext (FengChi driver)
-        # This step is now always enabled for better performance/power management.
+        if: ${{ inputs.enable_feature_z == true }}
         run: |
          set -e
          echo "Adding sched_ext (FengChi driver)..."
@@ -270,10 +275,10 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
-          # Base KSU and SUSFS configs
+          # ... (All previous KSU, SUSFS, Crypto, Network, ZRAM, Hibernation, TMPFS configs) ...
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
@@ -290,7 +295,6 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
 
-          # Crypto and Network Optimizations
           echo "CONFIG_CRYPTO_LZ4HC=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_CRYPTO_LZ4K=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_CRYPTO_842=y" >> "${DEFCONFIG_PATH}"
@@ -309,7 +313,6 @@ jobs:
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
           
-          # ZRAM Compression Settings
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
@@ -335,19 +338,15 @@ jobs:
           fi
           
           echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
-
-          # Hibernation Settings
           echo "CONFIG_HIBERNATION=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS_ALGO_LZ4=y" >> "${DEFCONFIG_PATH}"
-
-          # TMPFS XATTR and POSIX ACL Support
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
 
           # Wireguard and eSIM Support (if enabled)
           if ${{ inputs.enable_esim_and_nfc }}; then
-            echo "# eSIM, Wireguard, and NFC Dependencies" >> "${DEFCONFIG_PATH}"
+            echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}" 
@@ -356,18 +355,12 @@ jobs:
             echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_EUICC_GSMA=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_EUICC_HTTP=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_HCI=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_DIGITAL=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NFC_SE_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
           else
-            echo "# eSIM, Wireguard, and NFC support disabled by user" >> "${DEFCONFIG_PATH}"
+            echo "# eSIM and Wireguard support disabled by user" >> "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
-            sed -i '/CONFIG_NFC/d' "${DEFCONFIG_PATH}"
           fi
 
-          # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
           echo "CONFIG_LOCALVERSION_AUTO=n" >> "${DEFCONFIG_PATH}" 
@@ -440,7 +433,7 @@ jobs:
          set -e
          cd $GITHUB_WORKSPACE 
          
-         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}_FengChi_BBR_ECN" 
+         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
          if ${{ inputs.enable_feature_y }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
          else
@@ -448,6 +441,10 @@ jobs:
          fi
          if ${{ inputs.enable_esim_and_nfc }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM_NFC"
+         fi
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
+         if ${{ inputs.enable_feature_z }}; then
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          fi
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
