@@ -7,7 +7,7 @@ on:
         required: true
         default: 'sm8750'
       FEIL:
-        description: "Device configuration"
+        description: "Device configuration (manifest file name)"
         required: true
         default: 'oneplus_13'
       CPUD:
@@ -45,7 +45,7 @@ on:
        required: false
        default: false
        type: boolean
-      enable_esim_and_wireguard: # Renamed to be more accurate
+      enable_esim_and_wireguard:
        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
@@ -92,10 +92,10 @@ jobs:
         id: ccache 
         with:
           path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
+          key: ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.ref }}-
-            ccache-${{ runner.os }}-
+            ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-
+            ccache-${{ inputs.FEIL }}-${{ runner.os }}-
       
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
@@ -122,7 +122,7 @@ jobs:
         run: |
           git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
 
-      - name: Initialize repo and sync
+      - name: Initialize repo and sync for ${{ inputs.FEIL }}
         run: |
           set -e 
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
@@ -275,10 +275,10 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
-          # ... (All previous KSU, SUSFS, Crypto, Network, ZRAM, Hibernation, TMPFS configs) ...
+          # Base KSU and SUSFS configs
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
@@ -295,6 +295,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
 
+          # Crypto and Network Optimizations
           echo "CONFIG_CRYPTO_LZ4HC=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_CRYPTO_LZ4K=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_CRYPTO_842=y" >> "${DEFCONFIG_PATH}"
@@ -313,6 +314,7 @@ jobs:
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
           
+          # ZRAM Compression Settings
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
@@ -338,14 +340,18 @@ jobs:
           fi
           
           echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
+
+          # Hibernation Settings
           echo "CONFIG_HIBERNATION=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS_ALGO_LZ4=y" >> "${DEFCONFIG_PATH}"
+
+          # TMPFS XATTR and POSIX ACL Support
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
 
           # Wireguard and eSIM Support (if enabled)
-          if ${{ inputs.enable_esim_and_nfc }}; then
+          if ${{ inputs.enable_esim_and_wireguard }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
@@ -361,6 +367,7 @@ jobs:
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
           fi
 
+          # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
           echo "CONFIG_LOCALVERSION_AUTO=n" >> "${DEFCONFIG_PATH}" 
@@ -417,6 +424,7 @@ jobs:
         run: |
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+         # Use the latest version of patch_linux as per HanKuCha's latest update
          curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.11.4/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -439,11 +447,11 @@ jobs:
          else
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
-         if ${{ inputs.enable_esim_and_nfc }}; then
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM_NFC"
+         if ${{ inputs.enable_esim_and_wireguard }}; then
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
-         if ${{ inputs.enable_feature_z }}; then
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
+         if ${{ inputs.enable_feature_z }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          fi
          if ${{ inputs.enable_feature_x }}; then 
@@ -477,4 +485,5 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
