@@ -3,15 +3,15 @@ on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "Select compilation CPU type"
+        description: "Select compilation CPU type. Verify for 13t!"
         required: true
         default: 'sm8750' 
       FEIL:
-        description: "Device configuration"
+        description: "Device configuration (manifest file name)"
         required: true
-        default: 'oneplus_13t' 
+        default: 'oneplus_13t'
       CPUD:
-        description: "Processor codename"
+        description: "Processor codename. Verify for 13t!"
         required: true
         default: 'sun' 
       ANDROID_VERSION:
@@ -30,12 +30,12 @@ on:
        description: "Custom kernel build time (default: factory)"
        required: true
        default: '2024-12-17 23:36:49 UTC' 
-      enable_feature_x: # KPM
+      enable_feature_x:
        description: "Enable KPM support"
        required: false
        default: false
        type: boolean
-      enable_feature_y: # LZ4KD for ZRAM
+      enable_feature_y:
        description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
        required: false
        default: false 
@@ -436,6 +436,8 @@ jobs:
          cd $GITHUB_WORKSPACE 
          
          FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
+         # FengChi is now always included
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          if ${{ inputs.enable_feature_y }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
          else
@@ -444,13 +446,11 @@ jobs:
          if ${{ inputs.enable_esim_and_wireguard }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
-         if ${{ inputs.enable_feature_z }}; then 
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
-         fi
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
          fi
+         # Final suffix
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
 
          echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
