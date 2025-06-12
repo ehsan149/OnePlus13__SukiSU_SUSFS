@@ -3,17 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "Select compilation CPU type. Verify for 13t!"
+        description: "Select compilation CPU type"
         required: true
-        default: 'sm8750' # Please verify the correct SoC for OnePlus 13t
+        default: 'sm8750' 
       FEIL:
-        description: "Device configuration (manifest file name)"
+        description: "Device configuration"
         required: true
-        default: 'oneplus_13t' # Set for OnePlus 13t
+        default: 'oneplus_13t' 
       CPUD:
-        description: "Processor codename. Verify for 13t!"
+        description: "Processor codename"
         required: true
-        default: 'sun' # Please verify the correct codename for OnePlus 13t SoC
+        default: 'sun' 
       ANDROID_VERSION:
         description: "Kernel Android Version"
         required: true
