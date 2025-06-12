@@ -3,17 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "Select compilation CPU type (e.g., sm8750)"
+        description: "Select compilation CPU type. Verify for 13t!"
         required: true
-        default: 'sm8750' 
+        default: 'sm8750' # Please verify the correct SoC for OnePlus 13t
       FEIL:
-        description: "Device configuration"
+        description: "Device configuration (manifest file name)"
         required: true
-        default: 'oneplus_13t' # 
+        default: 'oneplus_13t' # Set for OnePlus 13t
       CPUD:
-        description: "Processor codename"
+        description: "Processor codename. Verify for 13t!"
         required: true
-        default: 'sun'
+        default: 'sun' # Please verify the correct codename for OnePlus 13t SoC
       ANDROID_VERSION:
         description: "Kernel Android Version"
         required: true
@@ -39,11 +39,6 @@ on:
        description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
        required: false
        default: false 
-       type: boolean
-      enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext)"
-       required: false
-       default: false
        type: boolean
       enable_esim_and_wireguard:
        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
@@ -253,7 +248,6 @@ jobs:
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z == true }}
         run: |
          set -e
          echo "Adding sched_ext (FengChi driver)..."
