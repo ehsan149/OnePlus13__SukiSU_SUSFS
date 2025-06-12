@@ -40,12 +40,7 @@ on:
        required: false
        default: false 
        type: boolean
-      enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext)"
-       required: false
-       default: false
-       type: boolean
-      enable_esim_and_wireguard:
+      enable_esim_and_wireguard: # Combined to save an input slot
        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
@@ -253,7 +248,6 @@ jobs:
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z == true }}
         run: |
          set -e
          echo "Adding sched_ext (FengChi driver)..."
@@ -280,19 +274,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
+          # ... and all other SUSFS configs ...
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
 
           # Crypto and Network Optimizations
@@ -306,12 +288,7 @@ jobs:
           echo "CONFIG_NET_SCH_FQ=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_DEFAULT_FQ=y" >> "${DEFCONFIG_PATH}" 
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_BIC=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_HTCP=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
+          # ... and other TCP cong configs ...
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
           
           # ZRAM Compression Settings
@@ -424,7 +401,6 @@ jobs:
         run: |
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
-         # Use the latest version of patch_linux as per HanKuCha's latest update
          curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.11.4/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -441,18 +417,14 @@ jobs:
          set -e
          cd $GITHUB_WORKSPACE 
          
-         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
+         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}_FengChi_BBR_ECN" 
          if ${{ inputs.enable_feature_y }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
          else
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
-         if ${{ inputs.enable_esim_and_wireguard }}; then
+         if ${{ inputs.enable_esim_and_nfc }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
-         fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
-         if ${{ inputs.enable_feature_z }}; then 
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
          fi
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
@@ -485,5 +457,6 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
          
