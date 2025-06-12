@@ -3,17 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "Select compilation CPU type"
+        description: "Select compilation CPU type (e.g., sm8750). Verify for 13t!"
         required: true
-        default: 'sm8750' 
+        default: 'sm8750' # Please verify the correct SoC for OnePlus 13t
       FEIL:
-        description: "Device configuration"
+        description: "Device configuration (manifest file name)"
         required: true
-        default: 'oneplus_13t' 
+        default: 'oneplus_13t' # Changed for OnePlus 13t
       CPUD:
-        description: "Processor codename"
+        description: "Processor codename. Verify for 13t!"
         required: true
-        default: 'sun'
+        default: 'sun' # Please verify the correct codename for OnePlus 13t SoC
       ANDROID_VERSION:
         description: "Kernel Android Version"
         required: true
@@ -40,13 +40,8 @@ on:
        required: false
        default: false 
        type: boolean
-      enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext)"
-       required: false
-       default: false
-       type: boolean
-      enable_esim_and_wireguard:
-       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
+      enable_esim_and_nfc:
+       description: "Attempt to enable eSIM, Wireguard, and NFC support (for Global devices)"
        required: false
        default: true 
        type: boolean
@@ -128,7 +123,6 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           
           mkdir kernel_workspace && cd kernel_workspace
-          # Use the FEIL input to get the correct manifest for the target device
           repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -254,7 +248,6 @@ jobs:
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z == true }}
         run: |
          set -e
          echo "Adding sched_ext (FengChi driver)..."
@@ -362,6 +355,11 @@ jobs:
             echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_EUICC_GSMA=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_EUICC_HTTP=y" >> "${DEFCONFIG_PATH}"
+            # NFC support is now disabled to avoid build errors until module list is updated
+            # echo "CONFIG_NFC_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_NFC_HCI=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_NFC_DIGITAL=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_NFC_SE_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
           else
             echo "# eSIM and Wireguard support disabled by user" >> "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
@@ -449,16 +447,13 @@ jobs:
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
          if ${{ inputs.enable_esim_and_nfc }}; then
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM_NFC"
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
-         # sched_ext (FengChi) is now optional again
-         if ${{ inputs.enable_feature_z }}; then 
-           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
-         fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN_FengChi" 
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
          fi
+         # Final suffix
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
 
          echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
