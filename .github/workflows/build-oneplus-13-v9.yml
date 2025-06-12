@@ -1,0 +1,149 @@
+name: OnePlus 13 Build  v9
+on:
+  workflow_dispatch:
+    inputs:
+      CPU:
+        description: "Select compilation CPU type"
+        required: true
+        default: 'sm8750'
+      FEIL:
+        description: "Device configuration"
+        required: true
+        default: 'oneplus_13'
+      CPUD:
+        description: "Processor codename"
+        required: true
+        default: 'sun'
+      ANDROID_VERSION:
+        description: "Kernel Android Version"
+        required: true
+        default: 'android15'
+      KERNEL_VERSION:
+        description: "Kernel version"
+        required: true
+        default: '6.6'
+      KERNEL_NAME: 
+        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
+        required: true
+        default: '-By-Ehsan149-4k' 
+      KERNEL_TIME:
+       description: "Custom kernel build time (default: factory)"
+       required: true
+       default: '2024-12-17 23:36:49 UTC' 
+      enable_feature_x: # KPM
+       description: "Enable KPM support"
+       required: false
+       default: false
+       type: boolean
+      enable_feature_y: # LZ4KD for ZRAM
+       description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
+       required: false
+       default: false 
+       type: boolean
+      enable_esim_and_nfc:
+       description: "Attempt to enable eSIM, Wireguard, and NFC support (for Global devices)"
+       required: false
+       default: true 
+       type: boolean
+      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 8G
+    outputs:
+      zip_name: ${{ steps.prepare_zip.outputs.zip_filename }}
+
+    steps:
+      # ... (تمام مراحل قبلی از Maximize Build Space تا Apply ECN and TCP Pacing Tweaks بدون تغییر باقی می‌مانند) ...
+
+      - name: Add sched_ext (FengChi driver)
+        # Condition removed, always included based on HanKuCha's latest changelog
+        run: |
+         set -e
+         echo "Adding sched_ext (FengChi driver)..."
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common 
+         if git status --porcelain | grep -q "kernel/sched"; then 
+            git add kernel/sched/
+            git commit -m "Add/Update sched_ext (FengChi driver)"
+         else
+            echo "No changes in kernel/sched to commit for sched_ext."
+         fi
+
+      - name: Add Kernel Configuration Settings and Custom Kernel Name
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
+          
+          # ... (تمام تنظیمات قبلی KSU, SUSFS, Crypto, Network, ZRAM, Hibernation, TMPFS) ...
+
+          # Wireguard, eSIM, and NFC Support (if enabled)
+          if ${{ inputs.enable_esim_and_nfc }}; then
+            echo "# eSIM, Wireguard, and NFC Dependencies" >> "${DEFCONFIG_PATH}"
+            # Wireguard
+            echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_CHACHA20POLY1305=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_POLY1305=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
+            # eSIM
+            echo "CONFIG_EUICC_GSMA=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_EUICC_HTTP=y" >> "${DEFCONFIG_PATH}"
+            # NFC & Secure Element (potential helpers for eSIM)
+            echo "CONFIG_NFC_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_NFC_HCI=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_NFC_DIGITAL=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_NFC_SE_NXP_NCI=y" >> "${DEFCONFIG_PATH}"
+          else
+            echo "# eSIM, Wireguard, and NFC support disabled by user" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_NFC/d' "${DEFCONFIG_PATH}" # Remove all NFC configs if disabled
+          fi
+
+          # Kernel Name defconfig settings
+          # ... (بقیه این مرحله بدون تغییر) ...
+
+      # ... (سایر مراحل از Add KPM Configuration Settings تا Build Kernel بدون تغییر باقی می‌مانند) ...
+
+      - name: Prepare AnyKernel3 Zip
+        id: prepare_zip 
+        run: |
+         set -e
+         cd $GITHUB_WORKSPACE 
+         
+         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}_FengChi_BBR_ECN" 
+         if ${{ inputs.enable_feature_y }}; then
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
+         else
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
+         fi
+         if ${{ inputs.enable_esim_and_nfc }}; then
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM_NFC"
+         fi
+         if ${{ inputs.enable_feature_x }}; then 
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
+         fi
+         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
+
+         echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
+         echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
+
+         # ... (بقیه این مرحله برای ساخت ZIP بدون تغییر) ...
+
+      - name: Upload AnyKernel3 Zip
+        uses: actions/upload-artifact@v4
+        with:
+         name: ${{ steps.prepare_zip.outputs.zip_filename }}
+         path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
