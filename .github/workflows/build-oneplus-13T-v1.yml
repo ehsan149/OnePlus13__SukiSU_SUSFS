@@ -2,18 +2,10 @@ name: OnePlus 13t Build v1
 on:
   workflow_dispatch:
     inputs:
-      CPU:
-        description: "Select compilation CPU type. Verify for 13t!"
-        required: true
-        default: 'sm8750' 
       FEIL:
         description: "Device configuration (manifest file name)"
         required: true
         default: 'oneplus_13t'
-      CPUD:
-        description: "Processor codename. Verify for 13t!"
-        required: true
-        default: 'sun' 
       ANDROID_VERSION:
         description: "Kernel Android Version"
         required: true
@@ -30,18 +22,23 @@ on:
        description: "Custom kernel build time (default: factory)"
        required: true
        default: '2024-12-17 23:36:49 UTC' 
-      enable_feature_x:
+      enable_feature_x: # KPM
        description: "Enable KPM support"
        required: false
        default: false
        type: boolean
-      enable_feature_y:
+      enable_feature_y: # LZ4KD for ZRAM
        description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
        required: false
        default: false 
        type: boolean
-      enable_esim_and_wireguard:
-       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
+      enable_feature_z: # FengChi driver
+       description: "Enable FengChi driver (sched_ext). NOTE: May conflict with some device functions."
+       required: false
+       default: true
+       type: boolean
+      enable_esim:
+       description: "Attempt to enable eSIM & Wireguard support"
        required: false
        default: true 
        type: boolean
@@ -117,13 +114,14 @@ jobs:
         run: |
           git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
 
-      - name: Initialize repo and sync for ${{ inputs.FEIL }}
+      - name: Initialize repo and sync
         run: |
           set -e 
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           
           mkdir kernel_workspace && cd kernel_workspace
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+          # Using HanKuCha's manifest repo as requested
+          repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m oneplus_13t.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -132,7 +130,8 @@ jobs:
         run: | 
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
+          # Use susfs-main branch as per HanKuCha's latest update
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
           echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV 
@@ -144,13 +143,15 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
 
           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
+          # Updated patch repo URL as per HanKuCha's latest update
           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
 
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
 
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+          # Updated patch repo URL as per HanKuCha's latest update
+          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
 
           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
@@ -175,10 +176,8 @@ jobs:
           fi
           
           cd ./common 
-
-          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
-
+          
+          # sed commands are removed to match HanKuCha's 13T workflow
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
           patch -p1 -F 3 < syscall_hooks.patch
@@ -231,7 +230,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
             echo "Cloning SukiSU_patch for LZ4KD patch..."
-            git clone https://github.com/ShirkNeko/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
+            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
           fi
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
@@ -248,6 +247,7 @@ jobs:
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add sched_ext (FengChi driver)
+        if: ${{ inputs.enable_feature_z == true }}
         run: |
          set -e
          echo "Adding sched_ext (FengChi driver)..."
@@ -345,7 +345,7 @@ jobs:
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
 
           # Wireguard and eSIM Support (if enabled)
-          if ${{ inputs.enable_esim_and_wireguard }}; then
+          if ${{ inputs.enable_esim }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
@@ -419,7 +419,7 @@ jobs:
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          # Use the latest version of patch_linux as per HanKuCha's latest update
-         curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.11.4/patch_linux
+         curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
          chmod +x patch_linux
          ./patch_linux
          if [ -f "oImage" ]; then
@@ -436,14 +436,15 @@ jobs:
          cd $GITHUB_WORKSPACE 
          
          FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
-         # FengChi is now always included
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
+         if ${{ inputs.enable_feature_z }}; then 
+           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
+         fi
          if ${{ inputs.enable_feature_y }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
          else
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
-         if ${{ inputs.enable_esim_and_wireguard }}; then
+         if ${{ inputs.enable_esim }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
