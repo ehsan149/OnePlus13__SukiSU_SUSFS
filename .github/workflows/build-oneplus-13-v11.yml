@@ -33,11 +33,11 @@ on:
        default: false 
        type: boolean
       enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext). NOTE: May conflict with eSIM on Global ROMs."
+       description: "Enable FengChi driver (sched_ext)"
        required: false
-       default: false
+       default: true
        type: boolean
-      enable_esim_and_wireguard:
+      enable_esim:
        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
@@ -347,7 +347,7 @@ jobs:
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
 
           # Wireguard and eSIM Support (if enabled)
-          if ${{ inputs.enable_esim_and_wireguard }}; then
+          if ${{ inputs.enable_esim }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
@@ -446,7 +446,7 @@ jobs:
          else
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
-         if ${{ inputs.enable_esim_and_wireguard }}; then
+         if ${{ inputs.enable_esim }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
@@ -482,4 +482,5 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
