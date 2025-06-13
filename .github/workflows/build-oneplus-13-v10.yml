@@ -7,7 +7,7 @@ on:
         required: true
         default: 'sm8750'
       FEIL:
-        description: "Device configuration (manifest file name)"
+        description: "Device configuration"
         required: true
         default: 'oneplus_13'
       CPUD:
@@ -40,7 +40,7 @@ on:
        required: false
        default: false 
        type: boolean
-      enable_esim_and_wireguard:
+      enable_esim:
        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
@@ -87,10 +87,10 @@ jobs:
         id: ccache 
         with:
           path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
           restore-keys: |
-            ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-
-            ccache-${{ inputs.FEIL }}-${{ runner.os }}-
+            ccache-${{ runner.os }}-${{ github.ref }}-
+            ccache-${{ runner.os }}-
       
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
@@ -117,7 +117,7 @@ jobs:
         run: |
           git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
 
-      - name: Initialize repo and sync for ${{ inputs.FEIL }}
+      - name: Initialize repo and sync
         run: |
           set -e 
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
@@ -132,7 +132,7 @@ jobs:
         run: | 
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
           echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV 
@@ -150,7 +150,7 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
 
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
 
           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
@@ -187,6 +187,7 @@ jobs:
       - name: Apply HMBird GKI patch
         run: |
           set -e
+          # ... (Content of this step is unchanged) ...
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
           HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
@@ -231,7 +232,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
             echo "Cloning SukiSU_patch for LZ4KD patch..."
-            git clone https://github.com/ShirkNeko/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
+            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
           fi
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
@@ -239,6 +240,7 @@ jobs:
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
+          # ... (Content of this step is unchanged) ...
           TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
 
@@ -248,6 +250,7 @@ jobs:
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
           
       - name: Add sched_ext (FengChi driver)
+        # Condition removed, always included based on HanKuCha's latest changelog
         run: |
          set -e
          echo "Adding sched_ext (FengChi driver)..."
@@ -269,6 +272,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
+          # ... (All previous KSU, SUSFS, Crypto, Network, ZRAM, Hibernation, TMPFS configs) ...
           # Base KSU and SUSFS configs
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
@@ -344,8 +348,8 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
 
-          # Wireguard and eSIM Support (if enabled)
-          if ${{ inputs.enable_esim_and_wireguard }}; then
+          # Wireguard and eSIM Support
+          if ${{ inputs.enable_esim }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
@@ -376,6 +380,7 @@ jobs:
       - name: Add KPM Configuration Settings
         if: ${{ inputs.enable_feature_x == true }}
         run: |
+          # ... (Content of this step is unchanged) ...
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -385,6 +390,7 @@ jobs:
 
       - name: Apply Hide Stuff Patch 
         run: |
+          # ... (Content of this step is unchanged) ...
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
@@ -396,11 +402,13 @@ jobs:
                  
       - name: Set Kernel build timestamp
         run: |
+          # ... (Content of this step is unchanged) ...
           export SOURCE_DATE_EPOCH=$(date -d "${{ github.event.inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           
       - name: Build Kernel
         run: |
+           # ... (Content of this step is unchanged) ...
            set -e
            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
@@ -416,10 +424,10 @@ jobs:
 
       - name: Make AnyKernel3 (Patch Image)
         run: |
+         # ... (Content of this step is unchanged) ...
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
-         # Use the latest version of patch_linux as per HanKuCha's latest update
-         curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.11.4/patch_linux
+         curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
          chmod +x patch_linux
          ./patch_linux
          if [ -f "oImage" ]; then
@@ -435,17 +443,15 @@ jobs:
          set -e
          cd $GITHUB_WORKSPACE 
          
-         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi" # FengChi is now always included
+         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}_FengChi_BBR_ECN" 
          if ${{ inputs.enable_feature_y }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
          else
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
          fi
-         if ${{ inputs.enable_esim_and_wireguard }}; then
+         if ${{ inputs.enable_esim }}; then
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
          fi
-         FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN" 
          if ${{ inputs.enable_feature_x }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
          fi
@@ -477,4 +483,5 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
