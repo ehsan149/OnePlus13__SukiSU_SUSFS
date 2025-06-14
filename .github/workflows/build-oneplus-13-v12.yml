@@ -33,12 +33,12 @@ on:
        default: false 
        type: boolean
       enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext). Recommended to be enabled."
+       description: "Enable FengChi driver (sched_ext)"
        required: false
        default: true
        type: boolean
       enable_esim:
-       description: "Attempt to enable eSIM & Wireguard support"
+       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
        required: false
        default: true 
        type: boolean
@@ -265,7 +265,30 @@ jobs:
           git commit -m "Add custom drivers (HMBird, Sched_ext)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
 
-      - name: Add Kernel Configuration Settings
+      - name: Apply LZ4KD Patches for ZRAM (if enabled)
+        if: ${{ inputs.enable_feature_y == true }} 
+        run: |
+          set -e
+          echo "LZ4KD for ZRAM is enabled. Applying patch..."
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
+            echo "Cloning SukiSU_patch for LZ4KD patch..."
+            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
+          fi
+          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
+          patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
+      
+      - name: Apply ECN and TCP Pacing Tweaks via SED
+        run: |
+          set -e
+          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
+          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
+          echo "ECN and TCP Pacing tweaks successfully applied."
+          
+      - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
