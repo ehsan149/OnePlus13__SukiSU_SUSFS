@@ -272,7 +272,6 @@ jobs:
           echo "LZ4KD for ZRAM is enabled. Applying patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
-            echo "Cloning SukiSU_patch for LZ4KD patch..."
             git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
           fi
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
