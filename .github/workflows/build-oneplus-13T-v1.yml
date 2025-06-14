@@ -120,7 +120,6 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           
           mkdir kernel_workspace && cd kernel_workspace
-          # Using HanKuCha's manifest repo as requested
           repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m oneplus_13t.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -130,7 +129,6 @@ jobs:
         run: | 
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          # Use susfs-main branch as per HanKuCha's latest update
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
@@ -141,27 +139,19 @@ jobs:
         run: |
           set -e 
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-
           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
-          # Updated patch repo URL as per HanKuCha's latest update
           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
-
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
-
-          # Updated patch repo URL as per HanKuCha's latest update
           git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
-
           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
-
           if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
               echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
               exit 1
           fi
-          
           cp "${EXPECTED_PATCH_PATH}" ./common/
           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
@@ -174,10 +164,7 @@ jobs:
           else
             echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
           fi
-          
           cd ./common 
-          
-          # sed commands are removed to match HanKuCha's 13T workflow
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
           patch -p1 -F 3 < syscall_hooks.patch
@@ -187,41 +174,95 @@ jobs:
         run: |
           set -e
           echo "Applying HMBird GKI patch..."
-          HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers
+          cat << 'EOF' > hmbird_patch.c
+          #include <linux/init.h>
+          #include <linux/module.h>
+          #include <linux/of.h>
+          #include <linux/slab.h>
+          #include <linux/string.h>
 
-          if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
-            echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found!" 
-            exit 1
-          fi
-          
-          mkdir -p "$HMBIRD_PATCH_DIR"
-          cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
-          echo "hmbird_patch.c copied to drivers directory."
-          
-          cd "$HMBIRD_PATCH_DIR"
-          if [ -f "Makefile" ]; then
-              if ! grep -q "hmbird_patch.o" Makefile; then
-                echo "obj-y += hmbird_patch.o" >> Makefile
-                echo "HMBird patch object added to drivers/Makefile."
-              else
-                echo "HMBird patch object already in drivers/Makefile."
-              fi
-          else
-              echo "obj-y += hmbird_patch.o" > Makefile
-              echo "Created drivers/Makefile and added HMBird patch object."
-          fi
-          
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform 
-          if ! git diff --quiet HEAD -- common/drivers/hmbird_patch.c common/drivers/Makefile; then
-             echo "Committing HMBird GKI patch module to local kernel source tree..."
-             git add common/drivers/hmbird_patch.c common/drivers/Makefile
-             git commit -m "Add HMBird GKI patch module"
-          else
-             echo "No new HMBird files or Makefile changes found to commit in kernel_platform."
-          fi
-          echo "Finished HMBird GKI patch application."
+          static int __init hmbird_patch_init(void)
+          {
+                  struct device_node *ver_np;
+                  const char *type;
+                  int ret;
 
+                  ver_np = of_find_node_by_path("/soc/oplus,hmbird/version_type");
+                  if (!ver_np) {
+                          pr_info("hmbird_patch: version_type node not found\n");
+                          return 0;
+                  }
+                  ret = of_property_read_string(ver_np, "type", &type);
+                  if (ret) {
+                          pr_info("hmbird_patch: type property not found\n");
+                          of_node_put(ver_np);
+                          return 0;
+                  }
+                  if (strcmp(type, "HMBIRD_OGKI")) {
+                          of_node_put(ver_np);
+                          return 0;
+                  }
+                  struct property *prop = of_find_property(ver_np, "type", NULL);
+                  if (prop) {
+                          struct property *new_prop = kmalloc(sizeof(*prop), GFP_KERNEL);
+                          if (!new_prop) {
+                                  pr_info("hmbird_patch: kmalloc for new_prop failed\n");
+                                  of_node_put(ver_np);
+                                  return 0;
+                          }
+                          memcpy(new_prop, prop, sizeof(*prop));
+                          new_prop->value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
+                          if (!new_prop->value) {
+                                  pr_info("hmbird_patch: kmalloc for new_prop->value failed\n");
+                                  kfree(new_prop);
+                                  of_node_put(ver_np);
+                                  return 0;
+                          }
+                          strcpy(new_prop->value, "HMBIRD_GKI");
+                          new_prop->length = strlen("HMBIRD_GKI") + 1;
+                          if (of_remove_property(ver_np, prop) != 0) {
+                                 pr_info("hmbird_patch: of_remove_property failed\n");
+                                 return 0;
+                          }
+                          if (of_add_property(ver_np, new_prop) !=0) {
+                                 pr_info("hmbird_patch: of_add_property failed\n");
+                                 return 0;
+                          }
+                          pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
+                  } else {
+                       pr_info("hmbird_patch: type property structure not found\n");
+                  }
+                  of_node_put(ver_np);
+                  return 0;
+          }
+          early_initcall(hmbird_patch_init);
+          MODULE_LICENSE("GPL");
+          MODULE_AUTHOR("reigadegr");
+          MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
+          EOF
+          if ! grep -q "hmbird_patch.o" Makefile; then
+            echo "obj-y += hmbird_patch.o" >> Makefile
+          fi
+          echo "HMBird patch file created."
+
+      - name: Add sched_ext (FengChi driver)
+        if: ${{ inputs.enable_feature_z == true }}
+        run: |
+         set -e
+         echo "Adding sched_ext (FengChi driver)..."
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
+
+      - name: Commit Custom Driver Changes
+        run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          git add -A
+          git commit -m "Add custom drivers (HMBird, Sched_ext)" --allow-empty || echo "No new changes to commit."
+          echo "Finished applying custom drivers and committing changes."
+          
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }} 
         run: |
@@ -229,7 +270,6 @@ jobs:
           echo "LZ4KD for ZRAM is enabled. Applying patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
-            echo "Cloning SukiSU_patch for LZ4KD patch..."
             git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
           fi
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
@@ -240,29 +280,11 @@ jobs:
           set -e
           TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
-
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
-          echo "ECN and TCP Pacing tweaks successfully applied via SED."
+          echo "ECN and TCP Pacing tweaks successfully applied."
           
-      - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z == true }}
-        run: |
-         set -e
-         echo "Adding sched_ext (FengChi driver)..."
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
-         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
-         cp -r ./sched_ext_temp/* ./common/kernel/sched
-         rm -rf ./sched_ext_temp
-         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common 
-         if git status --porcelain | grep -q "kernel/sched"; then 
-            git add kernel/sched/
-            git commit -m "Add/Update sched_ext (FengChi driver)"
-         else
-            echo "No changes in kernel/sched to commit for sched_ext."
-         fi
-
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
