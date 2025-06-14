@@ -172,12 +172,10 @@ jobs:
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
 
-      - name: Apply Custom Drivers and Commit Changes
+      - name: Apply HMBird GKI patch
         run: |
           set -e
-          echo "Applying HMBird GKI patch and FengChi driver..."
-          
-          # Apply HMBird Patch
+          echo "Applying HMBird GKI patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers
           cat << 'EOF' > hmbird_patch.c
           #include <linux/init.h>
@@ -250,52 +248,23 @@ jobs:
           fi
           echo "HMBird patch file created."
           
-          # Apply FengChi Driver if enabled
-          if ${{ inputs.enable_feature_z == true }}; then
-            echo "Adding sched_ext (FengChi driver)..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
-            git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
-            cp -r ./sched_ext_temp/* ./common/kernel/sched
-            rm -rf ./sched_ext_temp
-          fi
-          
-          # Commit all changes to the kernel_platform repository
+      - name: Add sched_ext (FengChi driver)
+        if: ${{ inputs.enable_feature_z == true }}
+        run: |
+         set -e
+         echo "Adding sched_ext (FengChi driver)..."
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
+
+      - name: Commit Custom Driver Changes
+        run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           git add -A
-          git commit -m "Add HMBird patch and optional FengChi driver" --allow-empty || echo "No new changes to commit."
+          git commit -m "Add custom drivers (HMBird, Sched_ext)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
 
-      - name: Apply other patches
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-
-          # LZ4KD for ZRAM
-          if ${{ inputs.enable_feature_y == true }}; then
-            echo "LZ4KD for ZRAM is enabled. Applying patch..."
-            if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
-              git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
-            fi
-            cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
-            patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
-          fi
-          
-          # ECN and TCP Pacing Tweaks
-          TCP_IPV4_PATH="./net/ipv4/tcp_ipv4.c"
-          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
-          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
-          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
-          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
-          echo "ECN and TCP Pacing tweaks successfully applied."
-
-          # Hide Stuff Patch
-          if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
-            cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-            patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
-          else
-            echo "WARN: 69_hide_stuff.patch not found, skipping."
-          fi
-          
       - name: Add Kernel Configuration Settings
         run: |
           set -e
@@ -372,11 +341,6 @@ jobs:
           echo "CONFIG_HIBERNATION=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS_ALGO_LZ4=y" >> "${DEFCONFIG_PATH}"
-          
-          # KPM Settings
-          if ${{ inputs.enable_feature_x }}; then
-            echo "CONFIG_KPM=y" >> "${DEFCONFIG_PATH}"
-          fi
 
           # TMPFS XATTR and POSIX ACL Support
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
@@ -411,6 +375,27 @@ jobs:
           cd common
           git add -A && git commit -m "Update defconfig with all features and custom settings" --allow-empty || echo "No defconfig changes to commit."
       
+      - name: Add KPM Configuration Settings
+        if: ${{ inputs.enable_feature_x == true }}
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
+          cd common
+          git add -A && git commit -m "Add KPM config to defconfig" --allow-empty || echo "No KPM defconfig changes to commit."
+
+      - name: Apply Hide Stuff Patch 
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
+            cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
+            patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
+          else
+            echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
+          fi
+                 
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ github.event.inputs.KERNEL_TIME }}" +%s)
