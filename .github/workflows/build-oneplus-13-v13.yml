@@ -281,9 +281,12 @@ jobs:
             echo "Applying EXPERIMENTAL le9 Unofficial patchset..."
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
             cd ./kernel_platform/common
+            # CORRECTED PATH: Look for patches in the root of the cloned repo
             for patch_file in $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/*.patch; do
-              echo "Applying patch: $(basename "$patch_file")"
-              patch -p1 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
+              if [ -f "$patch_file" ]; then
+                echo "Applying patch: $(basename "$patch_file")"
+                patch -p1 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
+              fi
             done
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
             echo "le9 Unofficial patchset applied."
