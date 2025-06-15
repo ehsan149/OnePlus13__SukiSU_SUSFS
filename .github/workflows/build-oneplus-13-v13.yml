@@ -281,7 +281,7 @@ jobs:
             echo "Applying EXPERIMENTAL le9 Unofficial patchset..."
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
             cd ./kernel_platform/common
-            for patch_file in $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/le9_patch/*.patch; do
+            for patch_file in $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/*.patch; do
               echo "Applying patch: $(basename "$patch_file")"
               patch -p1 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
             done
@@ -295,7 +295,7 @@ jobs:
           git add -A
           git commit -m "Apply all custom source patches and drivers" --allow-empty || echo "No new changes to commit."
           echo "Finished applying and committing all source modifications."
-
+          
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }} 
         run: |
@@ -324,7 +324,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
-          # Base KSU and SUSFS configs
+          # ... (All previous defconfig settings remain here) ...
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
@@ -343,8 +343,6 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
-
-          # Crypto and Network Optimizations
           echo "CONFIG_CRYPTO_LZ4HC=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_CRYPTO_LZ4K=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_CRYPTO_842=y" >> "${DEFCONFIG_PATH}"
@@ -362,8 +360,6 @@ jobs:
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
-          
-          # ZRAM Compression Settings
           if [ "${{ env.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
@@ -387,15 +383,10 @@ jobs:
             sed -i '/CONFIG_CRYPTO_LZ4KD/d' "${DEFCONFIG_PATH}" 
             echo "# CONFIG_CRYPTO_LZ4KD is not set" >> "${DEFCONFIG_PATH}"
           fi
-          
           echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
-
-          # Hibernation Settings
           echo "CONFIG_HIBERNATION=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS_ALGO_LZ4=y" >> "${DEFCONFIG_PATH}"
-
-          # TMPFS XATTR and POSIX ACL Support
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
           
@@ -422,7 +413,6 @@ jobs:
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
           fi
           
-          # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
           echo "CONFIG_LOCALVERSION_AUTO=n" >> "${DEFCONFIG_PATH}" 
