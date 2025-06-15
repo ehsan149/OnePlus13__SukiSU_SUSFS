@@ -2,18 +2,6 @@ name: OnePlus 13 Build v13
 on:
   workflow_dispatch:
     inputs:
-      FEIL:
-        description: "Device configuration (manifest file name)"
-        required: true
-        default: 'oneplus_13'
-      ANDROID_VERSION:
-        description: "Kernel Android Version"
-        required: true
-        default: 'android15'
-      KERNEL_VERSION:
-        description: "Kernel version"
-        required: true
-        default: '6.6'
       KERNEL_NAME: 
         description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
         required: true
@@ -62,6 +50,10 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
+      # Hardcoded values
+      FEIL: 'oneplus_13'
+      ANDROID_VERSION: 'android15'
+      KERNEL_VERSION: '6.6'
     outputs:
       zip_name: ${{ steps.prepare_zip.outputs.zip_filename }}
 
@@ -94,10 +86,10 @@ jobs:
         id: ccache 
         with:
           path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
+          key: ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ inputs.FEIL }}-${{ runner.os }}-${{ github.ref }}-
-            ccache-${{ inputs.FEIL }}-${{ runner.os }}-
+            ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-
+            ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-
       
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
@@ -130,7 +122,7 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           
           mkdir kernel_workspace && cd kernel_workspace
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -151,7 +143,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
-          SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
+          SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
           git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
@@ -265,7 +257,7 @@ jobs:
          git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
          cp -r ./sched_ext_temp/* ./common/kernel/sched
          rm -rf ./sched_ext_temp
-         
+
       - name: Apply Experimental Patches
         if: ${{ inputs.enable_adios || inputs.enable_le9uo }}
         run: |
@@ -301,22 +293,23 @@ jobs:
           git commit -m "Apply all custom source patches and drivers" --allow-empty || echo "No new changes to commit."
           echo "Finished applying and committing all source modifications."
           
-      - name: Apply LZ4KD Patches for ZRAM (if enabled)
-        if: ${{ inputs.enable_feature_y == true }} 
+      - name: Apply Other Patches
         run: |
           set -e
-          echo "LZ4KD for ZRAM is enabled. Applying patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
-            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
+
+          # LZ4KD for ZRAM
+          if ${{ inputs.enable_feature_y == true }}; then
+            echo "LZ4KD for ZRAM is enabled. Applying patch..."
+            if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then 
+              git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
+            fi
+            cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch" ./
+            patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
           fi
-          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
-          patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
-      
-      - name: Apply ECN and TCP Pacing Tweaks via SED
-        run: |
-          set -e
-          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          
+          # ECN and TCP Pacing Tweaks
+          TCP_IPV4_PATH="./net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
@@ -329,7 +322,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
-          # Base KSU and SUSFS configs
+          # ... (All previous defconfig settings remain here) ...
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
@@ -348,8 +341,6 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
-
-          # Crypto and Network Optimizations
           echo "CONFIG_CRYPTO_LZ4HC=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_CRYPTO_LZ4K=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_CRYPTO_842=y" >> "${DEFCONFIG_PATH}"
@@ -367,9 +358,7 @@ jobs:
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
-          
-          # ZRAM Compression Settings
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
+          if [ "${{ env.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
             if ${{ inputs.enable_feature_y }}; then 
@@ -392,26 +381,17 @@ jobs:
             sed -i '/CONFIG_CRYPTO_LZ4KD/d' "${DEFCONFIG_PATH}" 
             echo "# CONFIG_CRYPTO_LZ4KD is not set" >> "${DEFCONFIG_PATH}"
           fi
-          
           echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
-
-          # Hibernation Settings
           echo "CONFIG_HIBERNATION=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS_ALGO_LZ4=y" >> "${DEFCONFIG_PATH}"
-          
-          # TMPFS XATTR and POSIX ACL Support
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
-          
-          # Add ADIOS config if enabled
           if ${{ inputs.enable_adios }}; then
             echo "# [EXPERIMENTAL] ADIOS I/O Scheduler Settings" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
           fi
-
-          # Wireguard and eSIM Support (if enabled)
           if ${{ inputs.enable_esim }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
@@ -427,15 +407,13 @@ jobs:
             sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
           fi
-
-          # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
           echo "CONFIG_LOCALVERSION_AUTO=n" >> "${DEFCONFIG_PATH}" 
           sed -i '/CONFIG_LOCALVERSION=/d' "${DEFCONFIG_PATH}" 
-          echo "CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
-          echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\""
-
+          echo "CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
+          echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\""
+          
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -m "Update defconfig with all features and custom settings" --allow-empty || echo "No defconfig changes to commit."
@@ -463,7 +441,7 @@ jobs:
                  
       - name: Set Kernel build timestamp
         run: |
-          export SOURCE_DATE_EPOCH=$(date -d "${{ github.event.inputs.KERNEL_TIME }}" +%s)
+          export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           
       - name: Build Kernel
@@ -475,9 +453,7 @@ jobs:
            echo "Using CCACHE directory: $CCACHE_DIR"
            echo "Ccache statistics before build:"
            ccache -s
-
            tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
-           
            echo "Ccache statistics after build:"
            ccache -s
 
@@ -501,7 +477,7 @@ jobs:
          set -e
          cd $GITHUB_WORKSPACE 
          
-         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ inputs.FEIL }}"
+         FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
          if ${{ inputs.enable_adios }}; then 
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"
          fi
@@ -551,4 +527,5 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
