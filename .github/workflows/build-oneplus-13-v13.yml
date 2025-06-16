@@ -281,11 +281,11 @@ jobs:
             echo "Applying EXPERIMENTAL le9 Unofficial patchset..."
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
             cd ./kernel_platform/common
-            for patch_file in $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/*.patch; do
-              if [ -f "$patch_file" ]; then
-                echo "Applying patch: $(basename "$patch_file")"
-                patch -p1 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
-              fi
+            for patch_file in $(find $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp -maxdepth 1 -type f -name "*.patch" | sort -V); do
+
+              echo "Applying patch: $(basename "$patch_file")"
+
+              patch -p1 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
             done
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
             echo "le9 Unofficial patchset applied."
@@ -538,5 +538,4 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
-         
          
