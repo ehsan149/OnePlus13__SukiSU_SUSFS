@@ -287,8 +287,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm
           grep -q '^out:' vmscan.c || echo -e "\nout:\n    return 0;" >> vmscan.c
           sed -i 's/scan_balance = SCAN_ANON;/scan_balance = SCAN_ANON;/' vmscan.c
-          echo "Patched vmscan.c: added out: label and fixed scan_balance."
-		  
+          echo "Patched vmscan.c: added out: label and fixed scan_balance."	
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
