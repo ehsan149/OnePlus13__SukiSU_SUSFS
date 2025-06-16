@@ -75,12 +75,10 @@ jobs:
         run: |
           git config --global user.name "ehsan149" 
           git config --global user.email "ehsan149@yahoo.com" 
-
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
           sudo apt install -y python3 git curl patch ccache
-
       - name: Restore ccache
         uses: actions/cache@v3
         id: ccache 
@@ -103,7 +101,6 @@ jobs:
         run: |
           echo "Initial Ccache statistics:"
           ccache -s
-
       - name: Install repo tool
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin
@@ -111,11 +108,9 @@ jobs:
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
           echo "Repo tool installed." 
-
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
           git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
-
       - name: Initialize repo and sync
         run: |
           set -e 
@@ -173,7 +168,6 @@ jobs:
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
-
       - name: Apply HMBird GKI patch
         run: |
           set -e
@@ -257,7 +251,6 @@ jobs:
          git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
          cp -r ./sched_ext_temp/* ./common/kernel/sched
          rm -rf ./sched_ext_temp
-
       - name: Apply Experimental Patches
         if: ${{ inputs.enable_adios || inputs.enable_le9uo }}
         run: |
@@ -276,15 +269,14 @@ jobs:
             echo "ADIOS files integrated into source tree."
             cd $GITHUB_WORKSPACE/kernel_workspace
           fi
-
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying EXPERIMENTAL le9 Unofficial patchset..."
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
+            echo "--- Listing contents of le9uo_temp ---"
+            ls -l $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/
             cd ./kernel_platform/common
-            for patch_file in $(find $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp -maxdepth 1 -type f -name "*.patch" | sort -V); do
-
+            for patch_file in $(find "$GITHUB_WORKSPACE/kernel_workspace/le9uo_temp" -maxdepth 1 -type f -name "*.patch" | sort -V); do
               echo "Applying patch: $(basename "$patch_file")"
-
               patch -p1 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
             done
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
@@ -297,7 +289,6 @@ jobs:
           git add -A
           git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
-
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }} 
         run: |
@@ -398,7 +389,6 @@ jobs:
             echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
           fi
-
           if ${{ inputs.enable_esim }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
@@ -462,12 +452,10 @@ jobs:
            echo "Using CCACHE directory: $CCACHE_DIR"
            echo "Ccache statistics before build:"
            ccache -s
-
            tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
            
            echo "Ccache statistics after build:"
            ccache -s
-
       - name: Make AnyKernel3 (Patch Image)
         run: |
          set -e
@@ -511,10 +499,8 @@ jobs:
            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
          fi
          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip" 
-
          echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
          echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
-
          git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
