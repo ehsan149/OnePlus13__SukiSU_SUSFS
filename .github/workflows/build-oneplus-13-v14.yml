@@ -280,7 +280,7 @@ jobs:
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
             echo "le9 Unofficial patchset applied."
           fi
-          - name: Fix vmscan.c enum errors
+      - name: Fix vmscan.c enum errors
         if: ${{ inputs.enable_le9uo }}
         run: |
           set -e
@@ -530,4 +530,4 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
-         
+	 
