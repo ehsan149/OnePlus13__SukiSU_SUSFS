@@ -270,13 +270,16 @@ jobs:
             cd $GITHUB_WORKSPACE/kernel_workspace
           fi
            if ${{ inputs.enable_le9uo }}; then
-            echo "Applying EXPERIMENTAL le9 Unofficial patchset..."
+            echo "Applying EXPERIMENTAL le9 Unofficial patchset (Stable v1.14a for 6.6)..."
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
             cd ./kernel_platform/common
-            for patch_file in $(find "$GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/le9uo_patches" -maxdepth 1 -type f -name "*.patch" | sort -V); do
-              echo "Applying patch: $(basename "$patch_file")"
-              patch -p1 -F 3 < "$patch_file" || echo "WARN: Could not apply patch $(basename "$patch_file") cleanly."
-            done
+            
+            echo "Applying base patch..."
+            patch -p1 -F 3 < "$GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/le9uo_patches/stable/base/0001-linux6.6.63-le9uo-1.14.patch" || echo "WARN: Base patch failed to apply."
+            
+            echo "Applying preset-A patch..."
+            patch -p1 -F 3 < "$GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/le9uo_patches/stable/preset-A/0001-linux6.6.63-le9uo-1.14a.patch" || echo "WARN: Preset-A patch failed to apply."
+
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
             echo "le9 Unofficial patchset applied."
           fi
