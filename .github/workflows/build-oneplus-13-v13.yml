@@ -281,7 +281,6 @@ jobs:
             echo "Applying EXPERIMENTAL le9 Unofficial patchset..."
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
             cd ./kernel_platform/common
-            # CORRECTED PATH: Look for patches in the root of the cloned repo
             for patch_file in $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/*.patch; do
               if [ -f "$patch_file" ]; then
                 echo "Applying patch: $(basename "$patch_file")"
@@ -292,13 +291,13 @@ jobs:
             echo "le9 Unofficial patchset applied."
           fi
           
-      - name: Commit All Source Changes
+      - name: Commit Custom Driver Changes
         run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           git add -A
-          git commit -m "Apply all custom source patches and drivers" --allow-empty || echo "No new changes to commit."
-          echo "Finished applying and committing all source modifications."
-          
+          git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
+          echo "Finished applying custom drivers and committing changes."
+
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }} 
         run: |
@@ -416,6 +415,7 @@ jobs:
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
           fi
           
+          # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}" 
           echo "CONFIG_LOCALVERSION_AUTO=n" >> "${DEFCONFIG_PATH}" 
@@ -538,4 +538,5 @@ jobs:
         with:
          name: ${{ steps.prepare_zip.outputs.zip_filename }}
          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+         
          
