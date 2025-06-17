@@ -281,30 +281,34 @@ jobs:
             echo "le9 Unofficial patchset applied."
           fi
       - name: Patch vmscan.c for scan_balance enum and out: label
-        if: ${{ inputs.enable_le9uo }}
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm
-          # Insert enum definition if missing
-          if ! grep -q "enum scan_balance {" vmscan.c; then
-           sed -i '/^static void get_scan_count(/i \
-enum scan_balance {\
-    SCAN_EQUAL,\
-    SCAN_FRACT,\
-    SCAN_ANON,\
-    SCAN_FILE\
+  if: ${{ inputs.enable_le9uo }}
+  run: |
+    set -e
+    cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm
+    
+    # Insert enum definition if missing
+    if ! grep -q "enum scan_balance {" vmscan.c; then
+      sed -i '/^static void get_scan_count(/i \
+enum scan_balance {\\
+    SCAN_EQUAL,\\
+    SCAN_FRACT,\\
+    SCAN_ANON,\\
+    SCAN_FILE\\
 };' vmscan.c
-          fi
-             # Remove any existing out: labels
-             sed -i '/static void get_scan_count(/,/}/ s/^out://g' vmscan.c
-          fi
-          # Declare the variable if missing
-          if ! grep -q 'enum scan_balance scan_balance;' vmscan.c; then
-            sed -i '/static void get_scan_count(/{n; s/{/{\n    enum scan_balance scan_balance;/}' vmscan.c
-          fi 
-          # Add single out: label at function end
-          sed -i '/static void get_scan_count(/,/}/ s/}$/out:\n    return;\n}/' vmscan.c
-          echo "Patched vmscan.c: fixed scan_balance enum, declaration, and out: label."
+    fi
+    
+    # Remove any existing out: labels
+    sed -i '/static void get_scan_count(/,/}/ s/^out://g' vmscan.c
+    
+    # Declare the variable if missing
+    if ! grep -q 'enum scan_balance scan_balance;' vmscan.c; then
+      sed -i '/static void get_scan_count(/{n; s/{/{\n  enum scan_balance scan_balance;/}' vmscan.c
+    fi
+    
+    # Add single out: label at function end
+    sed -i '/static void get_scan_count(/,/}/ s/}$/out:\n  return;\n}/' vmscan.c
+    
+    echo "Patched vmscan.c: fixed scan_balance enum, declaration, and out: label."
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
