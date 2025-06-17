@@ -285,9 +285,11 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm
-          grep -q '^out:' vmscan.c || echo -e "\nout:\n    return 0;" >> vmscan.c
-          sed -i 's/scan_balance = SCAN_ANON;/scan_balance = SCAN_ANON;/' vmscan.c
-          echo "Patched vmscan.c: added out: label and fixed scan_balance."	
+          # Define scan_balance as an enum if not already defined
+          sed -i '/static void get_scan_count(/a\    enum scan_balance scan_balance;' vmscan.c
+          # Add out: label before the end of get_scan_count function
+          sed -i '/static void get_scan_count(/,/}/ s/}/out:\n    return;\n}/' vmscan.c
+          echo "Patched vmscan.c: defined scan_balance and added out: label."
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
