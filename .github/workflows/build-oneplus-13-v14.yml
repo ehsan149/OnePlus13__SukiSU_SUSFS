@@ -280,20 +280,31 @@ jobs:
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
             echo "le9 Unofficial patchset applied."
           fi
-      - name: Fix vmscan.c enum errors
+      - name: Patch vmscan.c for scan_balance enum and out: label
         if: ${{ inputs.enable_le9uo }}
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm
-          # Remove any existing 'out:' label in get_scan_count function to prevent redefinition
-          sed -i '/static void get_scan_count(/,/}/ s/^out://' vmscan.c
-          # Check and add scan_balance definition only if it doesn't exist
-          if ! grep -q 'enum scan_balance scan_balance;' vmscan.c; then
-             sed -i '/static void get_scan_count(/{n; s/{/{\n    enum scan_balance scan_balance;/}' vmscan.c
+          # Insert enum definition if missing
+          if ! grep -q "enum scan_balance {" vmscan.c; then
+           sed -i '/^static void get_scan_count(/i \
+enum scan_balance {\
+    SCAN_EQUAL,\
+    SCAN_FRACT,\
+    SCAN_ANON,\
+    SCAN_FILE\
+};' vmscan.c
           fi
-          # Add out: label at the end of the function
-          sed -i '/static void get_scan_count(/,/}/ s/}/out:\n    return;\n}/' vmscan.c
-          echo "Patched vmscan.c: fixed scan_balance declaration and out: label."
+             # Remove any existing out: labels
+             sed -i '/static void get_scan_count(/,/}/ s/^out://g' vmscan.c
+          fi
+          # Declare the variable if missing
+          if ! grep -q 'enum scan_balance scan_balance;' vmscan.c; then
+            sed -i '/static void get_scan_count(/{n; s/{/{\n    enum scan_balance scan_balance;/}' vmscan.c
+          fi 
+          # Add single out: label at function end
+          sed -i '/static void get_scan_count(/,/}/ s/}$/out:\n    return;\n}/' vmscan.c
+          echo "Patched vmscan.c: fixed scan_balance enum, declaration, and out: label."
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
