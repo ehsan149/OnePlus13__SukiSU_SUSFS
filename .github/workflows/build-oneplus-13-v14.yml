@@ -126,13 +126,14 @@ jobs:
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-      - name: Upload vmscan.c as artifact
+      - name: Copy vmscan.c to current directory
         run: |
-           cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm/vmscan.c .
-           uses: actions/upload-artifact@v4
-           with:
-             name: vmscan-source
-             path: vmscan.c    
+           cp $GITHUB_WORKSPACE/kernel_workflow/kernel_platform/common/mm/vmscan.c .
+      - name: Upload vmscan.c as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vmscan-source
+          path: vmscan.c    
       - name: Set up SukiSU
         run: |
           set -e
