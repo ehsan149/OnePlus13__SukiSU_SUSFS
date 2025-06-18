@@ -295,24 +295,28 @@ jobs:
           set -e
           VMSCAN_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm/vmscan.c"
           
-          # 1. Define the enum type before the function that uses it.
-          echo "Defining enum scan_balance..."
-          sed -i '/^static void get_scan_count(/i \
-          enum scan_balance {\
-          	SCAN_EQUAL,\
-          	SCAN_FRACT,\
-          	SCAN_ANON,\
-          	SCAN_FILE,\
-          };' "$VMSCAN_PATH"
+          # 1. Check if the enum is already defined by the patch
+          if ! grep -q "enum scan_balance {" "$VMSCAN_PATH"; then
+              echo "Defining enum scan_balance..."
+              sed -i '/^static void get_scan_count(/i \
+              enum scan_balance {\
+                  SCAN_EQUAL,\
+                  SCAN_FRACT,\
+                  SCAN_ANON,\
+                  SCAN_FILE,\
+              };' "$VMSCAN_PATH"
+          fi
           
-          # 2. Declare the variable of the enum type at the start of the function.
-          echo "Declaring scan_balance variable..."
-          sed -i '/static void get_scan_count(struct lruvec \*lruvec, struct scan_control \*sc, unsigned long \*nr)/a \
-          	enum scan_balance scan_balance;' "$VMSCAN_PATH"
-
-          # 3. Replace problematic 'goto out' with 'return' to fix control flow.
+          # 2. Ensure scan_balance variable is declared with its type
+          if ! grep -q "enum scan_balance scan_balance;" "$VMSCAN_PATH"; then
+              echo "Declaring scan_balance variable..."
+              sed -i '/static void get_scan_count(struct lruvec \*lruvec, struct scan_control \*sc, unsigned long \*nr)/a \
+              	enum scan_balance scan_balance;' "$VMSCAN_PATH"
+          fi
+          
+          # 3. Replace problematic 'goto out' with 'return' to fix control flow
           echo "Replacing broken goto statements..."
-          sed -i "s/goto out;/return;/g" "$VMSCAN_PATH"
+          sed -i 's/goto out;/return;/g' "$VMSCAN_PATH"
 
           echo "Patched vmscan.c successfully for le9uo."
           
@@ -423,7 +427,7 @@ jobs:
             echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
           fi
-
+          
           # Add KPM config if enabled
           if ${{ inputs.enable_feature_x == true }}; then
             echo "# KPM Support" >> "${DEFCONFIG_PATH}"
