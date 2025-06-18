@@ -2,45 +2,45 @@ name: OnePlus 13 Build v14
 on:
   workflow_dispatch:
     inputs:
-      KERNEL_NAME: 
-        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
+      KERNEL_NAME:
+        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)"
         required: true
-        default: '-By-Ehsan149-4k' 
+        default: '-By-Ehsan149-4k'
       KERNEL_TIME:
-       description: "Custom kernel build time (default: factory)"
-       required: true
-       default: '2024-12-17 23:36:49 UTC' 
+        description: "Custom kernel build time (default: factory)"
+        required: true
+        default: '2024-12-17 23:36:49 UTC'
       enable_adios:
-       description: "[EXPERIMENTAL] Enable ADIOS I/O Scheduler"
-       required: false
-       default: false
-       type: boolean
+        description: "[EXPERIMENTAL] Enable ADIOS I/O Scheduler"
+        required: false
+        default: false
+        type: boolean
       enable_le9uo:
-       description: "[EXPERIMENTAL] Enable LE.9.0 Unofficial Patchset"
-       required: false
-       default: false
-       type: boolean
+        description: "[EXPERIMENTAL] Enable LE.9.0 Unofficial Patchset"
+        required: false
+        default: false
+        type: boolean
       enable_feature_x: # KPM
-       description: "Enable KPM support"
-       required: false
-       default: false
-       type: boolean
+        description: "Enable KPM support"
+        required: false
+        default: false
+        type: boolean
       enable_feature_y: # LZ4KD for ZRAM
-       description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
-       required: false
-       default: false 
-       type: boolean
+        description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)"
+        required: false
+        default: false
+        type: boolean
       enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext)"
-       required: false
-       default: true
-       type: boolean
+        description: "Enable FengChi driver (sched_ext)"
+        required: false
+        default: true
+        type: boolean
       enable_esim:
-       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
-       required: false
-       default: true 
-       type: boolean
-      
+        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
+        required: false
+        default: true
+        type: boolean
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -61,20 +61,20 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 8192 
-          temp-reserve-mb: 2048 
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-          
+
       - name: Check out repository code
         uses: actions/checkout@v4
-          
+
       - name: Configure Git
         run: |
-          git config --global user.name "ehsan149" 
-          git config --global user.email "ehsan149@yahoo.com" 
+          git config --global user.name "ehsan149"
+          git config --global user.email "ehsan149@yahoo.com"
           
       - name: Install dependencies
         run: |
@@ -83,19 +83,19 @@ jobs:
           
       - name: Restore ccache
         uses: actions/cache@v3
-        id: ccache 
+        id: ccache
         with:
-          path: ${{ env.CCACHE_DIR }} 
-          key: ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }} 
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
             ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-
             ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-
-      
+            
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
-          echo "Initializing ccache..." 
-          ccache -Cz 
+          echo "Initializing ccache..."
+          ccache -Cz
           ccache -M ${{ env.CCACHE_MAXSIZE }}
           echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
         
@@ -110,7 +110,7 @@ jobs:
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          echo "Repo tool installed." 
+          echo "Repo tool installed."
           
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -118,7 +118,7 @@ jobs:
           
       - name: Initialize repo and sync
         run: |
-          set -e 
+          set -e
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           
           mkdir kernel_workspace && cd kernel_workspace
@@ -128,31 +128,31 @@ jobs:
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
       - name: Set up SukiSU
-        run: | 
+        run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           cd ./KernelSU
-          KSU_VERSION_VALUE=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
-          echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV 
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION_VALUE}/" kernel/Makefile 
+          KSU_VERSION_VALUE=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
+          echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION_VALUE}/" kernel/Makefile
         
       - name: Set up susfs
         run: |
-          set -e 
+          set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
+          SUSFS_CLONE_TARGET_REL="../susfs4ksu"
           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
           git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
-          PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
+          PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch"
           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
           if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
-              echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
-              exit 1
+            echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+            exit 1
           fi
           cp "${EXPECTED_PATCH_PATH}" ./common/
           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
@@ -160,17 +160,17 @@ jobs:
           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
-          if ! ${{ inputs.enable_feature_y }}; then 
+          if ! ${{ inputs.enable_feature_y }}; then
             echo "LZ4KD is disabled, copying lz4k_oplus."
             cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
           else
             echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
           fi
-          cd ./common 
+          cd ./common
           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
-          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
+          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
           
@@ -282,40 +282,40 @@ jobs:
             git clone https://github.com/firelzrd/le9uo.git ./le9uo_temp --depth=1
             cd ./kernel_platform/common
             
-            echo "Applying base patch..."
+            echo "Applying base patch for le9uo..."
             patch -p1 -F 3 < "$GITHUB_WORKSPACE/kernel_workspace/le9uo_temp/le9uo_patches/stable/base/0001-linux6.6.63-le9uo-1.14.patch" || echo "WARN: Base patch failed to apply."
 
             rm -rf $GITHUB_WORKSPACE/kernel_workspace/le9uo_temp
             echo "le9 Unofficial patchset applied."
           fi
           
-      - name: Patch vmscan.c for scan_balance enum and out label
+      - name: [le9uo] Correct vmscan.c syntax
         if: ${{ inputs.enable_le9uo }}
         run: |
           set -e
           VMSCAN_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm/vmscan.c"
           
-          # Check if the enum is already defined
-          if ! grep -q "enum scan_balance {" "$VMSCAN_PATH"; then
-              echo "Defining enum scan_balance..."
-              sed -i '/^static void get_scan_count(/i \
-              enum scan_balance {\
-                  SCAN_EQUAL,\
-                  SCAN_FRACT,\
-                  SCAN_ANON,\
-                  SCAN_FILE\
-              };' "$VMSCAN_PATH"
-          fi
+          # 1. Define the enum type before the function that uses it.
+          echo "Defining enum scan_balance..."
+          sed -i '/^static void get_scan_count(/i \
+          enum scan_balance {\
+          	SCAN_EQUAL,\
+          	SCAN_FRACT,\
+          	SCAN_ANON,\
+          	SCAN_FILE,\
+          };' "$VMSCAN_PATH"
           
-          # Ensure scan_balance variable is declared with its type
-          if ! grep -q "enum scan_balance scan_balance;" "$VMSCAN_PATH"; then
-              echo "Declaring scan_balance variable..."
-              sed -i '/static void get_scan_count(struct lruvec \*lruvec, struct scan_control \*sc, unsigned long \*nr)/a \
-              	enum scan_balance scan_balance;' "$VMSCAN_PATH"
-          fi
-          
-          echo "Patched vmscan.c successfully."
+          # 2. Declare the variable of the enum type at the start of the function.
+          echo "Declaring scan_balance variable..."
+          sed -i '/static void get_scan_count(struct lruvec \*lruvec, struct scan_control \*sc, unsigned long \*nr)/a \
+          	enum scan_balance scan_balance;' "$VMSCAN_PATH"
 
+          # 3. Replace problematic 'goto out' with 'return' to fix control flow.
+          echo "Replacing broken goto statements..."
+          sed -i "s/goto out;/return;/g" "$VMSCAN_PATH"
+
+          echo "Patched vmscan.c successfully for le9uo."
+          
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
