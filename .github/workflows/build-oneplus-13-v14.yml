@@ -288,7 +288,7 @@ jobs:
             echo "le9 Unofficial patchset applied."
           fi
           
-      - name: Patch vmscan.c for scan_balance enum and out: label
+      - name: Patch vmscan.c for scan_balance enum and out label
         if: ${{ inputs.enable_le9uo }}
         run: |
           set -e
@@ -296,15 +296,10 @@ jobs:
           
           # Insert enum definition if missing
           if ! grep -q "enum scan_balance {" vmscan.c; then
-            sed -i '/^static void get_scan_count(/i \
-enum scan_balance {\\
-    SCAN_EQUAL,\\
-    SCAN_FRACT,\\
-    SCAN_ANON,\\
-    SCAN_FILE\\
-};' vmscan.c
+            sed -i '/^static void get_scan_count(/i enum scan_balance { SCAN_EQUAL, SCAN_FRACT, SCAN_ANON, SCAN_FILE };' vmscan.c
+
           fi
-          
+           
           # Remove any existing out: labels
           sed -i '/static void get_scan_count(/,/}/ s/^out://g' vmscan.c
           
