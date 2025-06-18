@@ -316,14 +316,15 @@ jobs:
           # 2. Remove all existing out: labels within get_scan_count
           sed -i '/static void get_scan_count(/,/^}/ s/^[[:space:]]*out://g' vmscan.c
           
-          # 3. Declare scan_balance variable if missing
+          # 3. Declare scan_balance variable at the beginning of get_scan_count
           if ! grep -q "enum scan_balance scan_balance;" vmscan.c; then
-            sed -i '/static void get_scan_count(/{n; s/{/{\n    enum scan_balance scan_balance;/}' vmscan.c
+            sed -i '/static void get_scan_count(/a \
+          enum scan_balance scan_balance;' vmscan.c
           fi
           
-          # 4. Add single out: label before final return
+          # 4. Add single out: label before the final return in get_scan_count
           if ! grep -q "out:" vmscan.c; then
-             sed -i '/static void get_scan_count(/,/^}/ s/\s*return;/out:\n    return;/' vmscan.c
+             sed -i '/static void get_scan_count(/,/^}/ s/[[:space:]]*return;/out:\n    return;/' vmscan.c
           fi
           
           echo "Patched vmscan.c: fixed scan_balance enum, declaration, and out: label."
