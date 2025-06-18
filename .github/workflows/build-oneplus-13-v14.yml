@@ -295,7 +295,7 @@ jobs:
           set -e
           VMSCAN_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm/vmscan.c"
           
-          # 1. Check if the enum is already defined by the patch
+           # 1. Define enum scan_balance if missing
           if ! grep -q "enum scan_balance {" "$VMSCAN_PATH"; then
               echo "Defining enum scan_balance..."
               sed -i '/^static void get_scan_count(/i \
@@ -307,19 +307,29 @@ jobs:
               };' "$VMSCAN_PATH"
           fi
           
-          # 2. Ensure scan_balance variable is declared with its type
+          #2. Declare scan_balance variable with explicit type
           if ! grep -q "enum scan_balance scan_balance;" "$VMSCAN_PATH"; then
               echo "Declaring scan_balance variable..."
               sed -i '/static void get_scan_count(struct lruvec \*lruvec, struct scan_control \*sc, unsigned long \*nr)/a \
               	enum scan_balance scan_balance;' "$VMSCAN_PATH"
           fi
           
-          # 3. Replace problematic 'goto out' with 'return' to fix control flow
-          echo "Replacing broken goto statements..."
-          sed -i 's/goto out;/return;/g' "$VMSCAN_PATH"
+          # 3. Replace 'goto out;' with appropriate return values
+          echo "Replacing 'goto out;' with proper return statements..."
+          sed -i 's/goto out;/return 0;/g' "$VMSCAN_PATH"
 
+        
+          # 4. Remove unused 'out:' labels
+          echo "Removing unused 'out:' labels..."
+          sed -i '/out:/d' "$VMSCAN_PATH
           echo "Patched vmscan.c successfully for le9uo."
-          
+      - name: Upload patched vmscan.c
+        if: ${{ inputs.enable_le9uo }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-vmscan-c
+          path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm/vmscan.c
+      
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
