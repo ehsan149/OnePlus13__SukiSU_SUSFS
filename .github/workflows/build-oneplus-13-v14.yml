@@ -301,22 +301,24 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/mm
           
-          # Insert enum definition if missing
+          # 1. Insert enum definition if missing
           if ! grep -q "enum scan_balance {" vmscan.c; then
             sed -i '/^static void get_scan_count(/i enum scan_balance { SCAN_EQUAL, SCAN_FRACT, SCAN_ANON, SCAN_FILE };' vmscan.c
 
           fi
            
-          # Remove any existing out: labels
-          sed -i '/static void get_scan_count(/,/}/ s/^out://g' vmscan.c
+          # 2. Remove all existing out: labels within get_scan_count
+          sed -i '/static void get_scan_count(/,/^}/ s/^[[:space:]]*out://g' vmscan.c
           
-          # Declare the variable if missing
-          if ! grep -q 'enum scan_balance scan_balance;' vmscan.c; then
-            sed -i '/static void get_scan_count(/{n; s/{/{\n  enum scan_balance scan_balance;/}' vmscan.c
+          # 3. Declare scan_balance variable if missing
+          if ! grep -q "enum scan_balance scan_balance;" vmscan.c; then
+            sed -i '/static void get_scan_count(/{n; s/{/{\n    enum scan_balance scan_balance;/}' vmscan.c
           fi
           
-          # Add single out: label at function end
-          sed -i '/static void get_scan_count(/,/}/ s/}$/out:\n  return;\n}/' vmscan.c
+          # 4. Add single out: label before final return
+          if ! grep -q "out:" vmscan.c; then
+             sed -i '/static void get_scan_count(/,/^}/ s/\s*return;/out:\n    return;/' vmscan.c
+          fi
           
           echo "Patched vmscan.c: fixed scan_balance enum, declaration, and out: label."
           
