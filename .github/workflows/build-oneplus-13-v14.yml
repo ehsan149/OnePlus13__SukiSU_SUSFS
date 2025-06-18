@@ -289,7 +289,7 @@ jobs:
             echo "le9 Unofficial patchset applied."
           fi
           
-      - name: [le9uo] Correct vmscan.c syntax
+      - name: '[le9uo] Correct vmscan.c syntax'
         if: ${{ inputs.enable_le9uo }}
         run: |
           set -e
