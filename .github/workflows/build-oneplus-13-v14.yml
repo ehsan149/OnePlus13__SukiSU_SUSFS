@@ -321,7 +321,7 @@ jobs:
         
           # 4. Remove unused 'out:' labels
           echo "Removing unused 'out:' labels..."
-          sed -i '/out:/d' "$VMSCAN_PATH
+          sed -i '/out:/d' "$VMSCAN_PATH"
           echo "Patched vmscan.c successfully for le9uo."
       - name: Upload patched vmscan.c
         if: ${{ inputs.enable_le9uo }}
