@@ -266,7 +266,7 @@ jobs:
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/my-le9uo-for-6.6.30.patch || echo "WARN: Custom le9uo patch failed to apply."
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/my-le9uo-for-6.6.30-v2.patch || echo "WARN: Custom le9uo patch failed to apply."
           fi
 
           if ${{ inputs.enable_adios }}; then
