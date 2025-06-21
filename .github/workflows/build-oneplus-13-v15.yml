@@ -58,11 +58,13 @@ jobs:
 
     steps:
       - name: Install LVM2 for maximize-build-space
+        if: runner.hosted
         run: |
           sudo apt-get update
           sudo apt-get install lvm2 -y
           
       - name: Maximize build space
+        if: runner.hosted
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
