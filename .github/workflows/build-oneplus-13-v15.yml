@@ -100,6 +100,8 @@ jobs:
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
+          echo "Fixing ccache permissions..."
+          sudo chown -R $USER:$USER ${{ env.CCACHE_DIR }}
           echo "Initializing ccache..."
           ccache -Cz
           ccache -M ${{ env.CCACHE_MAXSIZE }}
