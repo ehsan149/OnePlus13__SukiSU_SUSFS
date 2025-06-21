@@ -100,7 +100,8 @@ jobs:
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
-          echo "Fixing ccache permissions..."
+          echo "Creating ccache directory and setting permissions..."
+          sudo mkdir -p ${{ env.CCACHE_DIR }}
           sudo chown -R $USER:$USER ${{ env.CCACHE_DIR }}
           echo "Initializing ccache..."
           ccache -Cz
