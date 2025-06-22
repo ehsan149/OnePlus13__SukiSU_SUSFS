@@ -366,6 +366,7 @@ jobs:
           echo "CONFIG_DEFAULT_FQ=y" >> "${DEFCONFIG_PATH}" 
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_BIC=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_TCP_CONG_CUBIC=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_HTCP=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}" 
