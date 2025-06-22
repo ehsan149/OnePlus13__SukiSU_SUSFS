@@ -2,48 +2,57 @@ name: OnePlus 13 Build v15
 on:
   workflow_dispatch:
     inputs:
-      KERNEL_NAME: 
-        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)" 
+      RUNNER_TYPE:
+        description: 'Select the runner for the build'
         required: true
-        default: '-By-Ehsan149-4k' 
+        type: choice
+        options:
+        - Self-Hosted
+        - GitHub-Hosted (16-core)
+        default: 'Self-Hosted'
+      KERNEL_NAME:
+        description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)"
+        required: true
+        default: '-By-Ehsan149-4k'
       KERNEL_TIME:
-       description: "Custom kernel build time (default: factory)"
-       required: true
-       default: '2024-12-17 23:36:49 UTC' 
+        description: "Custom kernel build time (default: factory)"
+        required: true
+        default: '2024-12-17 23:36:49 UTC'
       enable_adios:
-       description: "[EXPERIMENTAL] Enable ADIOS I/O Scheduler"
-       required: false
-       default: false
-       type: boolean
+        description: "[EXPERIMENTAL] Enable ADIOS I/O Scheduler"
+        required: false
+        default: true
+        type: boolean
       enable_le9uo:
-       description: "[EXPERIMENTAL] Enable LE.9.0 Unofficial Patchset"
-       required: false
-       default: false
-       type: boolean
+        description: "[EXPERIMENTAL] Enable LE.9.0 Unofficial Patchset"
+        required: false
+        default: true
+        type: boolean
       enable_feature_x: # KPM
-       description: "Enable KPM support"
-       required: false
-       default: false
-       type: boolean
+        description: "Enable KPM support"
+        required: false
+        default: false
+        type: boolean
       enable_feature_y: # LZ4KD for ZRAM
-       description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)" 
-       required: false
-       default: false 
-       type: boolean
+        description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)"
+        required: false
+        default: false
+        type: boolean
       enable_feature_z: # FengChi driver
-       description: "Enable FengChi driver (sched_ext)"
-       required: false
-       default: true
-       type: boolean
+        description: "Enable FengChi driver (sched_ext)"
+        required: false
+        default: true
+        type: boolean
       enable_esim:
-       description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
-       required: false
-       default: true 
-       type: boolean
-    
+        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
+        required: false
+        default: true
+        type: boolean
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.RUNNER_TYPE == 'Self-Hosted' && fromJSON('["self-hosted", "Linux", "X64", "oneplus-builder"]') || 'ubuntu-latest-16-cores' }}
+
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -57,7 +66,14 @@ jobs:
       zip_name: ${{ steps.prepare_zip.outputs.zip_filename }}
 
     steps:
+      - name: Install LVM2 for maximize-build-space
+        if: runner.hosted
+        run: |
+          sudo apt-get update
+          sudo apt-get install lvm2 -y
+
       - name: Maximize build space
+        if: runner.hosted
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -74,25 +90,29 @@ jobs:
         run: |
           git config --global user.name "ehsan149"
           git config --global user.email "ehsan149@yahoo.com"
-          
+
       - name: Install dependencies
         run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch ccache
-          
+          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache
+
       - name: Restore ccache
         uses: actions/cache@v3
         id: ccache
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
+          key: ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-${{ github.ref }}-
-            ccache-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ runner.os }}-
+            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-
+            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-
 
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
         run: |
+          if [[ "${{ runner.hosted }}" == "false" ]]; then
+            echo "Creating ccache directory and setting permissions for self-hosted runner..."
+            sudo mkdir -p ${{ env.CCACHE_DIR }}
+            sudo chown -R $USER:$USER ${{ env.CCACHE_DIR }}
+          fi
           echo "Initializing ccache..."
           ccache -Cz
           ccache -M ${{ env.CCACHE_MAXSIZE }}
@@ -102,27 +122,27 @@ jobs:
         run: |
           echo "Initial Ccache statistics:"
           ccache -s
-          
+
       - name: Install repo tool
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
+          curl -sSL https://mirrors.tuna.tsinghua.edu.cn/git/git-repo > $GITHUB_WORKSPACE/bin/repo
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          echo "Repo tool installed."
-          
+          echo "Repo tool installed from mirror."
+
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
           git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
-          
+
       - name: Initialize repo and sync
         run: |
           set -e
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
-          
           mkdir kernel_workspace && cd kernel_workspace
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
-          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
+          # *** Protocol changed from https to git to bypass SSL/TLS issues ***
+          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git --repo-url=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
+          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
@@ -172,7 +192,7 @@ jobs:
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
-          
+
       - name: Apply HMBird GKI patch
         run: |
           set -e
@@ -256,17 +276,17 @@ jobs:
           git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
           cp -r ./sched_ext_temp/* ./common/kernel/sched
           rm -rf ./sched_ext_temp
-          
-      # *** CHANGED: Applying our clean, custom le9uo patch ***
+
       - name: Apply Custom and Experimental Patches
         run: |
           set -e
           echo "Applying custom and experimental patches..."
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-fixed.patch || echo "WARN: Custom le9uo patch failed to apply."
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            # Using our final, fixed patch
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v2.patch || echo "WARN: Custom le9uo patch failed to apply."
           fi
 
           if ${{ inputs.enable_adios }}; then
@@ -276,7 +296,7 @@ jobs:
             mkdir -p ./kernel_platform/common/block/adios
             cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
             rm -rf ./adios_temp
-            cd ./kernel_platform/common/block
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
             sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
             sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
             echo "ADIOS files integrated into source tree."
@@ -288,7 +308,7 @@ jobs:
           git add -A
           git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
-          
+
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }}
         run: |
@@ -311,17 +331,15 @@ jobs:
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
           echo "ECN and TCP Pacing tweaks successfully applied."
 
-      # *** CHANGED: Merged KPM config into this single step ***
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
-          # Base KernelSU and susfs settings
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
@@ -337,57 +355,53 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "${DEFCONFIG_PATH}"
-          
-          # General performance and feature settings
           echo "CONFIG_CRYPTO_LZ4HC=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_CRYPTO_LZ4K=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_CRYPTO_LZ4K=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_CRYPTO_842=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_BBR=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_DEFAULT_BBR=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_DEFAULT_BBR=y" >> "${DEFCONFIG_PATH}" 
           echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_NET_SCH_FQ=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_DEFAULT_FQ=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_NET_SCH_FQ=y" >> "${DEFCONFIG_PATH}" 
+          echo "CONFIG_DEFAULT_FQ=y" >> "${DEFCONFIG_PATH}" 
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_BIC=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_HTCP=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}" 
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}" 
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
+          if [ "${{ env.KERNEL_VERSION }}" != "5.10" ]; then
+            echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
+            if ${{ inputs.enable_feature_y }}; then 
+              echo "CONFIG_CRYPTO_LZ4KD=y" >> "${DEFCONFIG_PATH}" 
+              echo "# LZ4KD for ZRAM is enabled via feature flag" >> "${DEFCONFIG_PATH}"
+              echo "CONFIG_ZRAM_DEF_COMP_LZ4=n" >> "${DEFCONFIG_PATH}" 
+              echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "${DEFCONFIG_PATH}"
+              echo 'CONFIG_ZRAM_DEF_COMP="lz4kd"' >> "${DEFCONFIG_PATH}"
+            else
+              sed -i '/CONFIG_CRYPTO_LZ4KD/d' "${DEFCONFIG_PATH}" 
+              echo "# CONFIG_CRYPTO_LZ4KD is not set" >> "${DEFCONFIG_PATH}"
+              echo "# Standard LZ4 for ZRAM" >> "${DEFCONFIG_PATH}"
+              echo "CONFIG_ZRAM_DEF_COMP_LZ4=y" >> "${DEFCONFIG_PATH}" 
+              echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> "${DEFCONFIG_PATH}"
+            fi
+          else 
+            echo "# Default ZRAM compression for Kernel 5.10 (e.g., LZ4)" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_ZRAM_DEF_COMP_LZ4=y" >> "${DEFCONFIG_PATH}" 
+            echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_CRYPTO_LZ4KD/d' "${DEFCONFIG_PATH}" 
+            echo "# CONFIG_CRYPTO_LZ4KD is not set" >> "${DEFCONFIG_PATH}"
+          fi
           echo "CONFIG_RCU_TRACE=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_HIBERNATION_COMPRESS_ALGO_LZ4=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
-
-          # LZ4KD for ZRAM settings
-          if [ "${{ env.KERNEL_VERSION }}" != "5.10" ]; then
-            echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
-            if ${{ inputs.enable_feature_y }}; then
-              echo "CONFIG_CRYPTO_LZ4KD=y" >> "${DEFCONFIG_PATH}"
-              echo "# LZ4KD for ZRAM is enabled via feature flag" >> "${DEFCONFIG_PATH}"
-              echo "CONFIG_ZRAM_DEF_COMP_LZ4=n" >> "${DEFCONFIG_PATH}"
-              echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "${DEFCONFIG_PATH}"
-              echo 'CONFIG_ZRAM_DEF_COMP="lz4kd"' >> "${DEFCONFIG_PATH}"
-            else
-              sed -i '/CONFIG_CRYPTO_LZ4KD/d' "${DEFCONFIG_PATH}"
-              echo "# CONFIG_CRYPTO_LZ4KD is not set" >> "${DEFCONFIG_PATH}"
-              echo "# Standard LZ4 for ZRAM" >> "${DEFCONFIG_PATH}"
-              echo "CONFIG_ZRAM_DEF_COMP_LZ4=y" >> "${DEFCONFIG_PATH}"
-              echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> "${DEFCONFIG_PATH}"
-            fi
-          else
-            echo "# Default ZRAM compression for Kernel 5.10 (e.g., LZ4)" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_ZRAM_DEF_COMP_LZ4=y" >> "${DEFCONFIG_PATH}"
-            echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> "${DEFCONFIG_PATH}"
-            sed -i '/CONFIG_CRYPTO_LZ4KD/d' "${DEFCONFIG_PATH}"
-            echo "# CONFIG_CRYPTO_LZ4KD is not set" >> "${DEFCONFIG_PATH}"
-          fi
-
+          
           # Add ADIOS config if enabled
           if ${{ inputs.enable_adios }}; then
             echo "# [EXPERIMENTAL] ADIOS I/O Scheduler Settings" >> "${DEFCONFIG_PATH}"
@@ -405,11 +419,11 @@ jobs:
           if ${{ inputs.enable_esim }}; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_CRYPTO_LIB_CHACHA20POLY1305=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_CRYPTO_LIB_POLY1305=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_NET_UDP_TUNNEL=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_CHACHA20POLY1305=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_POLY1305=y" >> "${DEFCONFIG_PATH}" 
+            echo "CONFIG_CRYPTO_LIB_CURVE25519=y" >> "${DEFCONFIG_PATH}" 
             echo "CONFIG_EUICC_GSMA=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_EUICC_HTTP=y" >> "${DEFCONFIG_PATH}"
           else
@@ -440,12 +454,12 @@ jobs:
           else
             echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
           fi
-                  
+
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
-          
+
       - name: Build Kernel
         run: |
             set -e
@@ -459,7 +473,7 @@ jobs:
             
             echo "Ccache statistics after build:"
             ccache -s
-            
+
       - name: Make AnyKernel3 (Patch Image)
         run: |
          set -e
@@ -473,7 +487,7 @@ jobs:
           else
             echo "WARN: oImage not found. Assuming patch_linux modified Image in-place or did not create oImage."
           fi
-          
+
       - name: Prepare AnyKernel3 Zip
         id: prepare_zip
         run: |
@@ -481,28 +495,15 @@ jobs:
           cd $GITHUB_WORKSPACE
           
           FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
-          if ${{ inputs.enable_adios }}; then
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"
-          fi
-          if ${{ inputs.enable_le9uo }}; then
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"
-          fi
-          if ${{ inputs.enable_feature_z }}; then
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"
-          fi
-          if ${{ inputs.enable_feature_y }}; then
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"
-          else
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"
-          fi
-          if ${{ inputs.enable_esim }}; then
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"
-          fi
+          if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
+          if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
+          if ${{ inputs.enable_feature_z }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"; fi
+          if ${{ inputs.enable_feature_y }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"; else FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"; fi
+          if ${{ inputs.enable_esim }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
-          if ${{ inputs.enable_feature_x }}; then
-            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"
-          fi
+          if ${{ inputs.enable_feature_x }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip"
+          
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
           echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
@@ -513,7 +514,7 @@ jobs:
             cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
             echo "Image copied to AnyKernel3_Package."
           else
-            echo "ERROR: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image not found for AnyKernel3 packaging!"
+            echo "ERROR: Kernel Image not found for AnyKernel3 packaging!"
             exit 1
           fi
           
