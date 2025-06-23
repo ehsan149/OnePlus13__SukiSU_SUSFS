@@ -140,8 +140,8 @@ jobs:
           set -e
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           mkdir kernel_workspace && cd kernel_workspace
-          # *** Protocol changed from https to git to bypass SSL/TLS issues ***
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git --repo-url=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
+          # *** Using SSH instead of HTTPS to bypass network issues ***
+          repo init -u git@github.com:JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
