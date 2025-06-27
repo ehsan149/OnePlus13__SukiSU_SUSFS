@@ -92,7 +92,7 @@ jobs:
         with:
           path: |
             ~/kernel_workspace
-            ~/archives
+            
           key: build-assets-v1-${{ hashFiles('main_repo/**.patch') }}
 
       - name: Download and Setup Sources if not cached
@@ -100,13 +100,9 @@ jobs:
         run: |
           # 1. First, checkout the lightweight kernel source from your private repo
           echo "Cloning lightweight kernel source..."
-          mkdir -p $GITHUB_WORKSPACE/kernel_workspace
-          
-          
-          echo "Cloning lightweight kernel source..."
-          git clone --depth 1 git@github.com:ehsan149/op13-full-source.git $GITHUB_WORKSPACE/kernel_workspace
-          
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          git clone --depth 1 git@github.com:ehsan149/op13-full-source.git ~/kernel_workspace
+          # 2. Now, go to the directory where toolchains should be
+          cd ~/kernel_workspace/kernel_platform
           echo "Downloading toolchain parts..."
           
           # ====================================================================
@@ -141,17 +137,15 @@ jobs:
           rm toolchains.part.* toolchains.tar.gz
 
       - name: Copy patches to build environment
-        run: cp -v $GITHUB_WORKSPACE/main_repo/*.patch $GITHUB_WORKSPACE/kernel_workspace/
+        run: |
+          cp -v $GITHUB_WORKSPACE/main_repo/*.patch ~/kernel_workspace/
 
       - name: Configure Git
         run: |
           git config --global user.name "ehsan149"
           git config --global user.email "ehsan149@yahoo.com"
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache
-
+      
       - name: Restore ccache
         uses: actions/cache@v3
         id: ccache
@@ -183,7 +177,7 @@ jobs:
       - name: Set up SukiSU
         run: |
           set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          cd ~/kernel_workspace/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-1.5.8/kernel/setup.sh" | bash -s susfs-1.5.8
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
@@ -318,16 +312,16 @@ jobs:
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            cd ~/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
             patch -p1 -F 3 < $GITHUB_WORKSPACE/main_repo/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
           fi
 
           if ${{ inputs.enable_adios }}; then
             echo "Setting up ADIOS I/O Scheduler from local source..."
-            mkdir -p $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/adios
-            cp -r $GITHUB_WORKSPACE/main_repo/adios/* $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/adios/
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
+            mkdir -p ~/kernel_workspace/kernel_platform/common/block/adios
+            cp -r $GITHUB_WORKSPACE/main_repo/adios/* ~/kernel_workspace/kernel_platform/common/block/adios/
+            cd ~/kernel_workspace/kernel_platform/common/block
             sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
             sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
             echo "ADIOS files integrated into source tree."
