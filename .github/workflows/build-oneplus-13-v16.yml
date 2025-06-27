@@ -150,10 +150,11 @@ jobs:
         id: ccache
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-${{ github.sha }}
+          # This key is more effective. It saves a unique cache per branch.
+          key: ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}
           restore-keys: |
-            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-
-            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-
+            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}
+            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-
 
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
