@@ -109,25 +109,14 @@ jobs:
           echo "Downloading toolchain parts..."
           # 3. Add the authorization header to each curl command.
           AUTH_HEADER="Authorization: Bearer ${{ secrets.GH_PAT }}"
-          # ====================================================================
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.00 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.00"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.01 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.01"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.02 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.02"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.03 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.03"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.04 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.04"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.05 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.05"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.06 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.06"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.07 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.07"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.08 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.08"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.09 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.09"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.10 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.10"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.11 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.11"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.12 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.12"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.13 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.13"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.14 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.14"
-          curl -L -H "${AUTH_HEADER}" -o toolchains.part.15 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.15"
-          
-           
+          RELEASE_URL="https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1"
+          # Loop from 00 to 15
+          for i in $(seq -w 0 15); do
+            PART_NAME="toolchains.part.${i}"
+            echo "Downloading ${PART_NAME}..."
+            curl -L -H "${AUTH_HEADER}" -o "${PART_NAME}" "${RELEASE_URL}/${PART_NAME}"
+          done
+         
           echo "Reassembling toolchains..."
           cat toolchains.part.* > toolchains.tar.gz
 
