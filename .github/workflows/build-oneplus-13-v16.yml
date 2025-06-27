@@ -108,7 +108,7 @@ jobs:
           # IMPORTANT: Paste the download links for your release parts here.
           # Write a separate curl line for each part.
           # ====================================================================
-           AUTH_HEADER="Authorization: Bearer ${{ secrets.GH_PAT }}"
+          AUTH_HEADER="Authorization: Bearer ${{ secrets.GH_PAT }}"
           curl -L -H "${AUTH_HEADER}" -o toolchains.part.00 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.00"
           curl -L -H "${AUTH_HEADER}" -o toolchains.part.01 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.01"
           curl -L -H "${AUTH_HEADER}" -o toolchains.part.02 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.02"
