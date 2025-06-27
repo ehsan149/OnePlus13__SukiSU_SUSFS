@@ -71,7 +71,7 @@ jobs:
     
       - name: Maximize build space on GitHub Runner
         if: runner.hosted
-        uses: easimon/maximize-build-space@master
+        uses: easimon/maximize-build-space@v10
         with:
           root-reserve-mb: 8192
           temp-reserve-mb: 2048
@@ -524,7 +524,7 @@ jobs:
           rm -rf ./AnyKernel3_Package/push.sh
           KERNEL_IMAGE_PATH="~/kernel_workspace/kernel_platform/dist/Image"
           if [ -f "$KERNEL_IMAGE_PATH" ]; then
-            "$KERNEL_IMAGE_PATH" ./AnyKernel3_Package/
+            cp "$KERNEL_IMAGE_PATH" ./AnyKernel3_Package/
             echo "Image copied to AnyKernel3_Package."
           else
             echo "ERROR: Kernel Image not found for AnyKernel3 packaging!"
