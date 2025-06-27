@@ -97,6 +97,10 @@ jobs:
       - name: Download and Setup Sources if not cached
         if: steps.cache-sources.outputs.cache-hit != 'true'
         run: |
+          # Ensure the target directory is clean before cloning, in case of a partial cache restore.
+          echo "Preparing clean workspace at ~/kernel_workspace..."
+          rm -rf ~/kernel_workspace
+          
           # 1. First, checkout the lightweight kernel source from your private repo
           echo "Cloning lightweight kernel source..."
           git clone --depth 1 https://ehsan149:${{ secrets.GH_PAT }}@github.com/ehsan149/op13-full-source.git ~/kernel_workspace
