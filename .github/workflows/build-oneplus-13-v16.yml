@@ -186,7 +186,7 @@ jobs:
       - name: Set up susfs
         run: |
           set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          cd ~/kernel_workspace/kernel_platform
           SUSFS_CLONE_TARGET_REL="../susfs4ksu"
           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
@@ -216,7 +216,7 @@ jobs:
           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
-          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
+          cp ../SukiSU_patch/hooks/syscall_hooks.patch ./
           patch -p1 -F 3 < syscall_hooks.patch
           echo "Finished 'Set up susfs' step."
 
@@ -224,7 +224,7 @@ jobs:
         run: |
           set -e
           echo "Applying HMBird GKI patch..."
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers
+          cd ~/kernel_workspace/kernel_platform/common/drivers
           cat << 'EOF' > hmbird_patch.c
           #include <linux/init.h>
           #include <linux/module.h>
@@ -299,7 +299,7 @@ jobs:
         run: |
          set -e
           echo "Adding sched_ext (FengChi driver)..."
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+          cd ~/kernel_workspace/kernel_platform/
           git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
           cp -r ./sched_ext_temp/* ./common/kernel/sched
           rm -rf ./sched_ext_temp
@@ -329,7 +329,7 @@ jobs:
 
       - name: Commit Custom Driver Changes
         run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          cd  ~/kernel_workspace/kernel_platform
           git add -A
           git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
@@ -339,17 +339,15 @@ jobs:
         run: |
           set -e
           echo "LZ4KD for ZRAM is enabled. Applying patch..."
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          if [ ! -d "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch" ]; then
-            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git ${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch --depth=1
-          fi
-          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch" ./
+          SUKISU_PATCH_DIR=~/kernel_workspace/SukiSU_patch
+          cd  ~/kernel_workspace/kernel_platform/common
+          cp "${SUKISU_PATCH_DIR}/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
 
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
-          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          TCP_IPV4_PATH="~/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
@@ -359,7 +357,7 @@ jobs:
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          cd ~/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
@@ -474,7 +472,7 @@ jobs:
         run: |
           set -e
           echo "Applying hide_stuff patch from local source..."
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cd ~/kernel_workspace/kernel_platform/common
           patch -p1 --no-backup-if-mismatch < $GITHUB_WORKSPACE/main_repo/69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
                       
          
@@ -486,7 +484,7 @@ jobs:
       - name: Build Kernel
         run: |
             set -e
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+            cd ~/kernel_workspace/kernel_platform
             export SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
             export PATH="/usr/lib/ccache:$PATH"
             echo "Using CCACHE directory: $CCACHE_DIR"
@@ -500,7 +498,7 @@ jobs:
       - name: Make AnyKernel3 (Patch Image)
         run: |
          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+          cd ~/kernel_workspace/kernel_platform/dist/
           curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
           chmod +x patch_linux
           ./patch_linux
@@ -532,9 +530,9 @@ jobs:
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
           rm -rf ./AnyKernel3_Package/.git
           rm -rf ./AnyKernel3_Package/push.sh
-          
-          if [ -f "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image" ]; then
-            cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+          KERNEL_IMAGE_PATH="~/kernel_workspace/kernel_platform/dist/Image"
+          if [ -f "$KERNEL_IMAGE_PATH" ]; then
+            "$KERNEL_IMAGE_PATH" ./AnyKernel3_Package/
             echo "Image copied to AnyKernel3_Package."
           else
             echo "ERROR: Kernel Image not found for AnyKernel3 packaging!"
