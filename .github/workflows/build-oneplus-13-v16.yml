@@ -101,18 +101,15 @@ jobs:
           echo "Preparing clean workspace at ~/kernel_workspace..."
           rm -rf ~/kernel_workspace
           
-          # 1. First, checkout the lightweight kernel source from your private repo
+          # 1. Clone the lightweight kernel source using HTTPS with a PAT for authentication.
           echo "Cloning lightweight kernel source..."
           git clone --depth 1 https://ehsan149:${{ secrets.GH_PAT }}@github.com/ehsan149/op13-full-source.git ~/kernel_workspace
           # 2. Now, go to the directory where toolchains should be
           cd ~/kernel_workspace/kernel_platform
           echo "Downloading toolchain parts..."
-          
-          # ====================================================================
-          # IMPORTANT: Paste the download links for your release parts here.
-          # Write a separate curl line for each part.
-          # ====================================================================
+          # 3. Add the authorization header to each curl command.
           AUTH_HEADER="Authorization: Bearer ${{ secrets.GH_PAT }}"
+          # ====================================================================
           curl -L -H "${AUTH_HEADER}" -o toolchains.part.00 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.00"
           curl -L -H "${AUTH_HEADER}" -o toolchains.part.01 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.01"
           curl -L -H "${AUTH_HEADER}" -o toolchains.part.02 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.02"
