@@ -66,13 +66,10 @@ jobs:
       zip_name: ${{ steps.prepare_zip.outputs.zip_filename }}
 
     steps:
-      - name: Install LVM2 for maximize-build-space
-        if: runner.hosted
-        run: |
-          sudo apt-get update
-          sudo apt-get install lvm2 -y
-
-      - name: Maximize build space
+      - name: Install Build Dependencies
+        run: sudo apt-get update && sudo apt-get install -y git curl patch ccache pv lvm2
+    
+      - name: Maximize build space on GitHub Runner
         if: runner.hosted
         uses: easimon/maximize-build-space@master
         with:
@@ -83,8 +80,68 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: Check out repository code
+      - name: Checkout Main Repo to get Patches
         uses: actions/checkout@v4
+        with:
+          path: main_repo
+
+      
+      - name: Cache and Restore Build Assets
+        id: cache-sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/kernel_workspace
+            ~/archives
+          key: build-assets-v1-${{ hashFiles('main_repo/**.patch') }}
+
+      - name: Download and Setup Sources if not cached
+        if: steps.cache-sources.outputs.cache-hit != 'true'
+        run: |
+          # 1. First, checkout the lightweight kernel source from your private repo
+          echo "Cloning lightweight kernel source..."
+          mkdir -p $GITHUB_WORKSPACE/kernel_workspace
+          
+          
+          echo "Cloning lightweight kernel source..."
+          git clone --depth 1 git@github.com:ehsan149/op13-full-source.git $GITHUB_WORKSPACE/kernel_workspace
+          
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          echo "Downloading toolchain parts..."
+          
+          # ====================================================================
+          # IMPORTANT: Paste the download links for your release parts here.
+          # Write a separate curl line for each part.
+          # ====================================================================
+          
+           curl -L -o toolchains.part.00 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.00"
+           curl -L -o toolchains.part.01 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.01"
+           curl -L -o toolchains.part.02 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.02"
+           curl -L -o toolchains.part.03 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.03"
+           curl -L -o toolchains.part.04 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.04"
+           curl -L -o toolchains.part.05 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.05"
+           curl -L -o toolchains.part.06 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.06"
+           curl -L -o toolchains.part.07 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.07"
+           curl -L -o toolchains.part.08 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.08"
+           curl -L -o toolchains.part.09 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.09"
+           curl -L -o toolchains.part.10 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.10"
+           curl -L -o toolchains.part.11 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.11"
+           curl -L -o toolchains.part.12 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.12"
+           curl -L -o toolchains.part.13 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.13"
+           curl -L -o toolchains.part.14 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.14"
+           curl -L -o toolchains.part.15 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.15"
+           
+          echo "Reassembling toolchains..."
+          cat toolchains.part.* > toolchains.tar.gz
+
+          echo "Extracting toolchains..."
+          tar -xzf toolchains.tar.gz
+          
+          echo "Cleaning up downloaded parts..."
+          rm toolchains.part.* toolchains.tar.gz
+
+      - name: Copy patches to build environment
+        run: cp -v $GITHUB_WORKSPACE/main_repo/*.patch $GITHUB_WORKSPACE/kernel_workspace/
 
       - name: Configure Git
         run: |
@@ -122,30 +179,7 @@ jobs:
         run: |
           echo "Initial Ccache statistics:"
           ccache -s
-
-      - name: Install repo tool
-        run: |
-          mkdir -p $GITHUB_WORKSPACE/bin
-          curl -sSL https://mirrors.tuna.tsinghua.edu.cn/git/git-repo > $GITHUB_WORKSPACE/bin/repo
-          chmod a+x $GITHUB_WORKSPACE/bin/repo
-          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          echo "Repo tool installed from mirror."
-
-      - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
-        run: |
-          git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
-
-      - name: Initialize repo and sync
-        run: |
-          set -e
-          which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
-          mkdir kernel_workspace && cd kernel_workspace
-          # *** Using SSH instead of HTTPS to bypass network issues ***
-          repo init -u git@github.com:JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
-          repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
-          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-
+      
       - name: Set up SukiSU
         run: |
           set -e
@@ -286,20 +320,18 @@ jobs:
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/main_repo/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
           fi
 
           if ${{ inputs.enable_adios }}; then
-            echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
-            cd $GITHUB_WORKSPACE/kernel_workspace
-            git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
-            mkdir -p ./kernel_platform/common/block/adios
-            cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
-            rm -rf ./adios_temp
+            echo "Setting up ADIOS I/O Scheduler from local source..."
+            mkdir -p $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/adios
+            cp -r $GITHUB_WORKSPACE/main_repo/adios/* $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/adios/
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
             sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
             sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
             echo "ADIOS files integrated into source tree."
+                        
           fi
 
       - name: Commit Custom Driver Changes
@@ -448,14 +480,11 @@ jobs:
       - name: Apply Hide Stuff Patch
         run: |
           set -e
+          echo "Applying hide_stuff patch from local source..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          if [ -f "$GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch" ]; then
-            cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
-            patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
-          else
-            echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
-          fi
-
+          patch -p1 --no-backup-if-mismatch < $GITHUB_WORKSPACE/main_repo/69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
+                      
+         
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
