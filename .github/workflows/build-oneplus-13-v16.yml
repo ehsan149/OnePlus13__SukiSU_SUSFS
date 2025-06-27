@@ -99,7 +99,7 @@ jobs:
         run: |
           # 1. First, checkout the lightweight kernel source from your private repo
           echo "Cloning lightweight kernel source..."
-          git clone --depth 1 git@github.com:ehsan149/op13-full-source.git ~/kernel_workspace
+          git clone --depth 1 https://ehsan149:${{ secrets.GH_PAT }}@github.com/ehsan149/op13-full-source.git ~/kernel_workspace
           # 2. Now, go to the directory where toolchains should be
           cd ~/kernel_workspace/kernel_platform
           echo "Downloading toolchain parts..."
@@ -108,23 +108,24 @@ jobs:
           # IMPORTANT: Paste the download links for your release parts here.
           # Write a separate curl line for each part.
           # ====================================================================
+           AUTH_HEADER="Authorization: Bearer ${{ secrets.GH_PAT }}"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.00 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.00"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.01 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.01"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.02 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.02"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.03 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.03"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.04 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.04"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.05 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.05"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.06 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.06"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.07 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.07"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.08 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.08"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.09 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.09"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.10 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.10"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.11 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.11"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.12 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.12"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.13 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.13"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.14 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.14"
+          curl -L -H "${AUTH_HEADER}" -o toolchains.part.15 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.15"
           
-           curl -L -o toolchains.part.00 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.00"
-           curl -L -o toolchains.part.01 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.01"
-           curl -L -o toolchains.part.02 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.02"
-           curl -L -o toolchains.part.03 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.03"
-           curl -L -o toolchains.part.04 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.04"
-           curl -L -o toolchains.part.05 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.05"
-           curl -L -o toolchains.part.06 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.06"
-           curl -L -o toolchains.part.07 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.07"
-           curl -L -o toolchains.part.08 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.08"
-           curl -L -o toolchains.part.09 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.09"
-           curl -L -o toolchains.part.10 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.10"
-           curl -L -o toolchains.part.11 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.11"
-           curl -L -o toolchains.part.12 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.12"
-           curl -L -o toolchains.part.13 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.13"
-           curl -L -o toolchains.part.14 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.14"
-           curl -L -o toolchains.part.15 "https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1/toolchains.part.15"
            
           echo "Reassembling toolchains..."
           cat toolchains.part.* > toolchains.tar.gz
