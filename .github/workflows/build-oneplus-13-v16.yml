@@ -92,7 +92,6 @@ jobs:
         with:
           path: |
             ~/kernel_workspace
-            
           key: build-assets-v1-${{ hashFiles('main_repo/**.patch') }}
 
       - name: Download and Setup Sources if not cached
