@@ -2,6 +2,14 @@ name: OnePlus 13 Build v17
 on:
   workflow_dispatch:
     inputs:
+      RUNNER_TYPE:
+        description: 'Select the runner for the build'
+        required: true
+        type: choice
+        options:
+        - Self-Hosted
+        - GitHub-Hosted (16-core)
+        default: 'Self-Hosted'
       KERNEL_NAME:
         description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)"
         required: true
