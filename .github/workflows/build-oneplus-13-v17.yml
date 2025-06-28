@@ -86,7 +86,6 @@ jobs:
           echo "Cleaning the workspace at ${{ env.KERNEL_WORKSPACE_DIR }}..."
           cd ${{ env.KERNEL_WORKSPACE_DIR }}
           git clean -fdx
-          git reset --hard HEAD
           echo "Workspace cleaned."
       
       - name: Copy patches to build environment
