@@ -422,7 +422,7 @@ jobs:
       - name: Build Kernel
         run: |
             set -e
-            cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform
+            cd ${{ env.KERNEL_WORKSPACE_DIR }}
             export SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
             export PATH="/usr/lib/ccache:$PATH"
             echo "Using CCACHE directory: $CCACHE_DIR"
@@ -451,7 +451,7 @@ jobs:
         id: prepare_zip
         run: |
          set -e
-          cd ${{ env.KERNEL_WORKSPACE_DIR }}
+          cd $GITHUB_WORKSPACE
           
           FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
