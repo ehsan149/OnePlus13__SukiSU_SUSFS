@@ -447,6 +447,8 @@ jobs:
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
             patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
+            echo "Applying activation patch from URL..."
+            curl -L "https://raw.githubusercontent.com/firelzrd/le9uo/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch" | patch -p1 -F 3
           fi
 
           if ${{ inputs.enable_adios }}; then
