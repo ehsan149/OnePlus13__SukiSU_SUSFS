@@ -126,7 +126,7 @@ jobs:
       - name: Install repo tool
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin
-          curl -sSL https://mirrors.tuna.tsinghua.edu.cn/git/git-repo > $GITHUB_WORKSPACE/bin/repo
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo  > $GITHUB_WORKSPACE/bin/repo
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
           echo "Repo tool installed from mirror."
@@ -141,7 +141,7 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           mkdir kernel_workspace && cd kernel_workspace
           # *** Using SSH instead of HTTPS to bypass network issues ***
-          repo init -u git@github.com:JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
+          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
