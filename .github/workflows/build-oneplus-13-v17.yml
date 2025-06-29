@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v16
+name: OnePlus 13 Build v17
 on:
   workflow_dispatch:
     inputs:
@@ -48,16 +48,22 @@ on:
         required: false
         default: true
         type: boolean
+      CLEAN_BUILD:
+        description: "Run 'git clean -fdx' before build to ensure a clean state"
+        required: true
+        type: boolean
+        default: true
+              
+        
 
 jobs:
   build:
-    runs-on: ${{ inputs.RUNNER_TYPE == 'Self-Hosted' && fromJSON('["self-hosted", "Linux", "X64", "oneplus-builder"]') || 'ubuntu-latest-16-cores' }}
+    runs-on: self-hosted
 
     env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache
+      KERNEL_WORKSPACE_DIR: /home/ehsan/kernel_projects/kernel-full-source
+      LOCAL_ASSETS_DIR: /home/ehsan/workflow_assets
+      CCACHE_DIR: /home/ehsan/.ccache
       CCACHE_MAXSIZE: 8G
       FEIL: 'oneplus_13'
       ANDROID_VERSION: 'android15'
@@ -69,69 +75,27 @@ jobs:
       - name: Install Build Dependencies
         run: sudo apt-get update && sudo apt-get install -y git curl patch ccache pv lvm2
     
-      - name: Maximize build space on GitHub Runner
-        if: runner.hosted
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-
-      - name: Checkout Main Repo to get Patches
+      - name: Checkout Workflow Repo
         uses: actions/checkout@v4
         with:
           path: main_repo
-
-      
-      - name: Cache and Restore Build Assets
-        id: cache-sources
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/kernel_workspace
-          key: build-assets-v1-${{ hashFiles('main_repo/**.patch') }}
-
-      - name: Download and Setup Sources if not cached
-        if: steps.cache-sources.outputs.cache-hit != 'true'
+          
+      - name: Clean Workspace Before Build (Optional)
+        if: ${{ inputs.CLEAN_BUILD == true }}
         run: |
-          # Ensure the target directory is clean before cloning, in case of a partial cache restore.
-          echo "Preparing clean workspace at ~/kernel_workspace..."
-          rm -rf ~/kernel_workspace
-          
-          # 1. Clone the lightweight kernel source using HTTPS with a PAT for authentication.
-          echo "Cloning lightweight kernel source..."
-          git clone --depth 1 https://ehsan149:${{ secrets.GH_PAT }}@github.com/ehsan149/op13-full-source.git ~/kernel_workspace
-          # 2. Now, go to the directory where toolchains should be
-          cd ~/kernel_workspace/kernel_platform
-          echo "Downloading toolchain parts..."
-          # 3. Add the authorization header to each curl command.
-          AUTH_HEADER="Authorization: Bearer ${{ secrets.GH_PAT }}"
-          RELEASE_URL="https://github.com/ehsan149/op13-full-source/releases/download/toolchains-v1"
-          # Loop from 00 to 15
-          for i in $(seq -w 0 15); do
-            PART_NAME="toolchains.part.${i}"
-            echo "Downloading ${PART_NAME}..."
-            curl -L -H "${AUTH_HEADER}" -o "${PART_NAME}" "${RELEASE_URL}/${PART_NAME}"
-          done
-         
-          echo "Reassembling toolchains..."
-          cat toolchains.part.* > toolchains.tar.gz
-
-          echo "Extracting toolchains..."
-          tar -xzf toolchains.tar.gz
-          
-          echo "Cleaning up downloaded parts..."
-          rm toolchains.part.* toolchains.tar.gz
-
+          echo "Cleaning the workspace at ${{ env.KERNEL_WORKSPACE_DIR }}..."
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}
+          git clean -fdx
+          echo "Workspace cleaned."
+      
       - name: Copy patches to build environment
         run: |
-          cp -v $GITHUB_WORKSPACE/main_repo/*.patch ~/kernel_workspace/
-
+          echo "Copying local patches into workspace..."
+          cp -v ${{ env.LOCAL_ASSETS_DIR }}/*.patch ${{ env.KERNEL_WORKSPACE_DIR }}/
+      
       - name: Configure Git
         run: |
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}
           git config --global user.name "ehsan149"
           git config --global user.email "ehsan149@yahoo.com"
 
@@ -142,33 +106,14 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           # This key is more effective. It saves a unique cache per branch.
-          key: ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}
+          key: ccache-${{ runner.os }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}
           restore-keys: |
-            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}
-            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-
-
-      - name: Setup ccache
-        if: steps.ccache.outputs.cache-hit != 'true'
-        run: |
-          if [[ "${{ runner.hosted }}" == "false" ]]; then
-            echo "Creating ccache directory and setting permissions for self-hosted runner..."
-            sudo mkdir -p ${{ env.CCACHE_DIR }}
-            sudo chown -R $USER:$USER ${{ env.CCACHE_DIR }}
-          fi
-          echo "Initializing ccache..."
-          ccache -Cz
-          ccache -M ${{ env.CCACHE_MAXSIZE }}
-          echo "Ccache initialized and max size set to ${{ env.CCACHE_MAXSIZE }}."
-
-      - name: Display ccache stats before operations
-        run: |
-          echo "Initial Ccache statistics:"
-          ccache -s
-      
+            ccache-${{ runner.os }}-${{ env.FEIL }}-
+           
       - name: Set up SukiSU
         run: |
           set -e
-          cd ~/kernel_workspace/kernel_platform
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-1.5.8/kernel/setup.sh" | bash -s susfs-1.5.8
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
@@ -178,7 +123,7 @@ jobs:
       - name: Set up susfs
         run: |
           set -e
-          cd ~/kernel_workspace/kernel_platform
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform
           SUSFS_CLONE_TARGET_REL="../susfs4ksu"
           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
@@ -216,7 +161,7 @@ jobs:
         run: |
           set -e
           echo "Applying HMBird GKI patch..."
-          cd ~/kernel_workspace/kernel_platform/common/drivers
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common/drivers
           cat << 'EOF' > hmbird_patch.c
           #include <linux/init.h>
           #include <linux/module.h>
@@ -291,7 +236,7 @@ jobs:
         run: |
          set -e
           echo "Adding sched_ext (FengChi driver)..."
-          cd ~/kernel_workspace/kernel_platform/
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform
           git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
           cp -r ./sched_ext_temp/* ./common/kernel/sched
           rm -rf ./sched_ext_temp
@@ -303,16 +248,16 @@ jobs:
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
-            cd ~/kernel_workspace/kernel_platform/common
+            cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/main_repo/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
+            patch -p1 -F 3 < ${{ env.KERNEL_WORKSPACE_DIR }}/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
           fi
 
           if ${{ inputs.enable_adios }}; then
             echo "Setting up ADIOS I/O Scheduler from local source..."
             mkdir -p ~/kernel_workspace/kernel_platform/common/block/adios
-            cp -r $GITHUB_WORKSPACE/main_repo/adios/* ~/kernel_workspace/kernel_platform/common/block/adios/
-            cd ~/kernel_workspace/kernel_platform/common/block
+            cp -r $GITHUB_WORKSPACE/main_repo/adios/* ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common/block/adios/
+            cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common/block
             sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
             sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
             echo "ADIOS files integrated into source tree."
@@ -321,7 +266,7 @@ jobs:
 
       - name: Commit Custom Driver Changes
         run: |
-          cd  ~/kernel_workspace/kernel_platform
+          cd  ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform
           git add -A
           git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
@@ -331,15 +276,15 @@ jobs:
         run: |
           set -e
           echo "LZ4KD for ZRAM is enabled. Applying patch..."
-          SUKISU_PATCH_DIR=~/kernel_workspace/SukiSU_patch
-          cd  ~/kernel_workspace/kernel_platform/common
+          SUKISU_PATCH_DIR=${{ env.KERNEL_WORKSPACE_DIR }}/SukiSU_patch
+          cd  ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common
           cp "${SUKISU_PATCH_DIR}/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch" ./
           patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch for ZRAM failed."
 
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
-          TCP_IPV4_PATH="~/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          TCP_IPV4_PATH="${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
@@ -349,7 +294,7 @@ jobs:
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
-          cd ~/kernel_workspace/kernel_platform
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
@@ -464,8 +409,8 @@ jobs:
         run: |
           set -e
           echo "Applying hide_stuff patch from local source..."
-          cd ~/kernel_workspace/kernel_platform/common
-          patch -p1 --no-backup-if-mismatch < $GITHUB_WORKSPACE/main_repo/69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/common
+          patch -p1 --no-backup-if-mismatch < ${{ env.KERNEL_WORKSPACE_DIR }}/69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
                       
          
       - name: Set Kernel build timestamp
@@ -476,7 +421,7 @@ jobs:
       - name: Build Kernel
         run: |
             set -e
-            cd ~/kernel_workspace/kernel_platform
+            cd ${{ env.KERNEL_WORKSPACE_DIR }}
             export SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
             export PATH="/usr/lib/ccache:$PATH"
             echo "Using CCACHE directory: $CCACHE_DIR"
@@ -490,7 +435,7 @@ jobs:
       - name: Make AnyKernel3 (Patch Image)
         run: |
          set -e
-          cd ~/kernel_workspace/kernel_platform/dist/
+          cd ${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/dist/
           curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
           chmod +x patch_linux
           ./patch_linux
@@ -522,7 +467,7 @@ jobs:
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
           rm -rf ./AnyKernel3_Package/.git
           rm -rf ./AnyKernel3_Package/push.sh
-          KERNEL_IMAGE_PATH="~/kernel_workspace/kernel_platform/dist/Image"
+          KERNEL_IMAGE_PATH="${{ env.KERNEL_WORKSPACE_DIR }}/kernel_platform/dist/Image"
           if [ -f "$KERNEL_IMAGE_PATH" ]; then
             cp "$KERNEL_IMAGE_PATH" ./AnyKernel3_Package/
             echo "Image copied to AnyKernel3_Package."
