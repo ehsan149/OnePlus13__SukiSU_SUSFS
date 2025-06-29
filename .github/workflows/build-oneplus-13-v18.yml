@@ -287,31 +287,7 @@ jobs:
           cp -r ./sched_ext_temp/* ./common/kernel/sched
           rm -rf ./sched_ext_temp
 
-      - name: Apply Custom and Experimental Patches
-        run: |
-          set -e
-          echo "Applying custom and experimental patches..."
-          
-          if ${{ inputs.enable_le9uo }}; then
-            echo "Applying custom le9uo patch for kernel 6.6..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
-          fi
-
-          if ${{ inputs.enable_adios }}; then
-            echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
-            cd $GITHUB_WORKSPACE/kernel_workspace
-            git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
-            mkdir -p ./kernel_platform/common/block/adios
-            cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
-            rm -rf ./adios_temp
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
-            sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
-            sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
-            echo "ADIOS files integrated into source tree."
-          fi
-
+      
       - name: Commit Custom Driver Changes
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
@@ -466,6 +442,32 @@ jobs:
             echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
           fi
 
+      - name: Apply Custom and Experimental Patches
+        run: |
+          set -e
+          echo "Applying custom and experimental patches..."
+          
+          if ${{ inputs.enable_le9uo }}; then
+            echo "Applying custom le9uo patch for kernel 6.6..."
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            # Using our final, fixed patch
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
+          fi
+
+          if ${{ inputs.enable_adios }}; then
+            echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
+            cd $GITHUB_WORKSPACE/kernel_workspace
+            git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
+            mkdir -p ./kernel_platform/common/block/adios
+            cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
+            rm -rf ./adios_temp
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
+            sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
+            sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
+            echo "ADIOS files integrated into source tree."
+          fi
+
+      
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
