@@ -288,12 +288,7 @@ jobs:
           rm -rf ./sched_ext_temp
 
       
-      - name: Commit Custom Driver Changes
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          git add -A
-          git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
-          echo "Finished applying custom drivers and committing changes."
+      
 
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }}
@@ -451,7 +446,7 @@ jobs:
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v3.patch || echo "WARN: Custom le9uo patch failed to apply."
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v3.patch
           fi
 
           if ${{ inputs.enable_adios }}; then
@@ -467,6 +462,12 @@ jobs:
             echo "ADIOS files integrated into source tree."
           fi
 
+      - name: Commit Custom Driver Changes
+        run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          git add -A
+          git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
+          echo "Finished applying custom drivers and committing changes."
       
       - name: Set Kernel build timestamp
         run: |
