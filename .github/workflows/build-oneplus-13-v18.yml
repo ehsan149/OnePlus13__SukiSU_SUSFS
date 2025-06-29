@@ -469,6 +469,12 @@ jobs:
           git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
       
+      - name: DEBUG - Verify Patched File Contents
+        run: |
+          echo "--- Verifying contents of critical header file before build ---"
+          cat $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/include/uapi/linux/netfilter/xt_ecn.h
+          echo "--------------------------------------------------"
+          
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
