@@ -372,7 +372,7 @@ jobs:
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}" 
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_IP_NF_TARGET_ECN=n" >> "${DEFCONFIG_PATH}"
           if [ "${{ env.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
