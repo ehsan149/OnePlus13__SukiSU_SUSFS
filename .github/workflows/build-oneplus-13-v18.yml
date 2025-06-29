@@ -8,7 +8,7 @@ on:
         type: choice
         options:
         - Self-Hosted
-        - GitHub-Hosted (16-core)
+        - GitHub-Hosted (2-core)
         default: 'Self-Hosted'
       KERNEL_NAME:
         description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)"
@@ -51,7 +51,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ inputs.RUNNER_TYPE == 'Self-Hosted' && fromJSON('["self-hosted", "Linux", "X64", "oneplus-builder"]') || 'ubuntu-latest-16-cores' }}
+    runs-on: ${{ inputs.RUNNER_TYPE == 'Self-Hosted' && fromJSON('["self-hosted", "Linux", "X64", "oneplus-builder"]') || 'ubuntu-latest' }}
 
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
