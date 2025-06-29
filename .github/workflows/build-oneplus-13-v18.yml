@@ -446,7 +446,7 @@ jobs:
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v4.patch
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
           fi
 
           if ${{ inputs.enable_adios }}; then
@@ -475,12 +475,6 @@ jobs:
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
 
-      - name: DEBUG - Verify Patched File Contents
-        run: |
-          echo "--- Verifying contents of critical header file before build ---"
-          cat $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/include/uapi/linux/netfilter/xt_ecn.h
-          echo "--------------------------------------------------"
-      
       - name: Build Kernel
         run: |
             set -e
