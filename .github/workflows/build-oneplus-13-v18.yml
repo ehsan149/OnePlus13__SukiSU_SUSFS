@@ -446,7 +446,9 @@ jobs:
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v4.patch
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
+            echo "Applying activation patch from URL..."
+            curl -L "https://raw.githubusercontent.com/firelzrd/le9uo/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch" | patch -p1 -F 3
           fi
 
           if ${{ inputs.enable_adios }}; then
@@ -469,6 +471,7 @@ jobs:
           git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
           echo "Finished applying custom drivers and committing changes."
       
+              
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
