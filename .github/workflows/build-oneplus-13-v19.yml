@@ -160,7 +160,7 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-1.5.8/kernel/setup.sh" | bash -s susfs-1.5.8
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
           echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV
