@@ -293,6 +293,13 @@ jobs:
           set -e
           echo "Applying custom and experimental patches..."
           
+          if true; then
+            echo "Applying LLVM Polly patch directly from URL..."
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/4559fc6fd570cde3ca1d6033fe63adf211ea2885.patch" | patch -p1
+            echo "Polly patch applied."
+          fi
+          
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
