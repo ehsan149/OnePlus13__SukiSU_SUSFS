@@ -160,7 +160,7 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-1.5.8/kernel/setup.sh" | bash -s susfs-1.5.8
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
           cd ./KernelSU
           KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
           echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV
@@ -288,7 +288,40 @@ jobs:
           rm -rf ./sched_ext_temp
 
       
-      
+      - name: Apply Custom and Experimental Patches
+        run: |
+          set -e
+          echo "Applying custom and experimental patches..."
+          
+          if ${{ inputs.enable_le9uo }}; then
+            echo "Applying custom le9uo patch for kernel 6.6..."
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            # Using our final, fixed patch
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
+            echo "Main le9uo patch (v5) applied."
+            patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
+            echo "workingset_protection enabled by default."
+          fi
+
+          if ${{ inputs.enable_adios }}; then
+            echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
+            cd $GITHUB_WORKSPACE/kernel_workspace
+            git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
+            mkdir -p ./kernel_platform/common/block/adios
+            cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
+            rm -rf ./adios_temp
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
+            sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
+            sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
+            echo "ADIOS files integrated into source tree."
+          fi
+
+      - name: Commit Custom Driver Changes
+        run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          git add -A
+          git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
+          echo "Finished applying custom drivers and committing changes."
 
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
         if: ${{ inputs.enable_feature_y == true }}
@@ -437,42 +470,6 @@ jobs:
             echo "WARN: 69_hide_stuff.patch not found in cloned TheWildJames_kernel_patches repo, skipping."
           fi
 
-      - name: Apply Custom and Experimental Patches
-        run: |
-          set -e
-          echo "Applying custom and experimental patches..."
-          
-          if ${{ inputs.enable_le9uo }}; then
-            echo "Applying custom le9uo patch for kernel 6.6..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
-            echo "Main le9uo patch (v5) applied."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
-            echo "workingset_protection enabled by default."
-          fi
-
-          if ${{ inputs.enable_adios }}; then
-            echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
-            cd $GITHUB_WORKSPACE/kernel_workspace
-            git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
-            mkdir -p ./kernel_platform/common/block/adios
-            cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
-            rm -rf ./adios_temp
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
-            sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
-            sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
-            echo "ADIOS files integrated into source tree."
-          fi
-
-      - name: Commit Custom Driver Changes
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          git add -A
-          git commit -m "Add custom drivers (HMBird, Sched_ext, Experimental Patches)" --allow-empty || echo "No new changes to commit."
-          echo "Finished applying custom drivers and committing changes."
-      
-              
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
