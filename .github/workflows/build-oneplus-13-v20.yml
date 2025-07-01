@@ -433,6 +433,12 @@ jobs:
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
           fi
           
+          # Enable pstore for crash logging
+            echo "# Enable pstore for crash logging" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_PSTORE=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_PSTORE_CONSOLE=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_PSTORE_RAM=y" >> "${DEFCONFIG_PATH}"
+            
           # Add Polly config 
            if true; then
              echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
