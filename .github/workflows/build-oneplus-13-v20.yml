@@ -293,12 +293,12 @@ jobs:
           set -e
           echo "Applying custom and experimental patches..."
           
-          # if true; then
-            # echo "Applying local Polly source patch..."
-            # cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            # patch -p1 < $GITHUB_WORKSPACE/polly.patch
-            # echo "Polly source patch applied."
-          # fi
+           if true; then
+             echo "Applying local Polly source patch..."
+             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+             patch -p1 < $GITHUB_WORKSPACE/polly.patch
+            echo "Polly source patch applied."
+           fi
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
@@ -434,12 +434,12 @@ jobs:
           fi
           
           # Add Polly config 
-          # if true; then
-            # echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
-            # echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
+           if true; then
+             echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
             # echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
             
-          # fi  
+           fi  
           
           # Add AutoFDO config
             echo "# AutoFDO (Feedback-Directed Optimization)" >> "${DEFCONFIG_PATH}"
