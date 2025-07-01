@@ -296,7 +296,7 @@ jobs:
            if true; then
              echo "Applying local Polly source patch..."
              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-             patch -p1 < $GITHUB_WORKSPACE/polly4.patch
+             patch -p1 < $GITHUB_WORKSPACE/polly5.patch
             echo "Polly source patch applied."
            fi
           
@@ -443,7 +443,8 @@ jobs:
            if true; then
              echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "${DEFCONFIG_PATH}"
+             # echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
             
            fi  
           
