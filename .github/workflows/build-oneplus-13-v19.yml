@@ -294,10 +294,10 @@ jobs:
           echo "Applying custom and experimental patches..."
           
           if true; then
-            echo "Applying LLVM Polly patch directly from URL..."
+            echo "Applying local Polly source patch..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/4559fc6fd570cde3ca1d6033fe63adf211ea2885.patch" | patch -p1
-            echo "Polly patch applied."
+            patch -p1 < $GITHUB_WORKSPACE/polly-source.patch
+            echo "Polly source patch applied."
           fi
           
           if ${{ inputs.enable_le9uo }}; then
@@ -433,6 +433,11 @@ jobs:
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
           fi
           
+          # Add Polly config 
+          if true; then
+            echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
+          fi  
           # Add KPM config if enabled
           if ${{ inputs.enable_feature_x == true }}; then
             echo "# KPM Support" >> "${DEFCONFIG_PATH}"
