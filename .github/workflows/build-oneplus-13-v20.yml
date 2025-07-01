@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v19
+name: OnePlus 13 Build v20
 on:
   workflow_dispatch:
     inputs:
@@ -293,12 +293,12 @@ jobs:
           set -e
           echo "Applying custom and experimental patches..."
           
-          if true; then
-            echo "Applying local Polly source patch..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            patch -p1 < $GITHUB_WORKSPACE/polly.patch
+           if true; then
+             echo "Applying local Polly source patch..."
+             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+             patch -p1 < $GITHUB_WORKSPACE/polly.patch
             echo "Polly source patch applied."
-          fi
+           fi
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
@@ -434,12 +434,12 @@ jobs:
           fi
           
           # Add Polly config 
-          if true; then
-            echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
+           if true; then
+             echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
             
-          fi  
+           fi  
           
           # Add AutoFDO config
             echo "# AutoFDO (Feedback-Directed Optimization)" >> "${DEFCONFIG_PATH}"
@@ -540,7 +540,7 @@ jobs:
           FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
-          if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
+          # if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_AutoFDO"; fi
           if ${{ inputs.enable_feature_z }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"; fi
           if ${{ inputs.enable_feature_y }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"; else FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"; fi
@@ -574,4 +574,3 @@ jobs:
         with:
           name: ${{ steps.prepare_zip.outputs.zip_filename }}
           path: ${{ steps.prepare_zip.outputs.zip_filename }}
-          
