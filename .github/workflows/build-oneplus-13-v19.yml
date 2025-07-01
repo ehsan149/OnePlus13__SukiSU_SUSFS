@@ -441,6 +441,10 @@ jobs:
             
           fi  
           
+          # Add AutoFDO config
+            echo "# AutoFDO (Feedback-Directed Optimization)" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_AUTOFDO_CLANG=y" >> "${DEFCONFIG_PATH}"
+            
           # Add KPM config if enabled
           if ${{ inputs.enable_feature_x == true }}; then
             echo "# KPM Support" >> "${DEFCONFIG_PATH}"
@@ -463,7 +467,7 @@ jobs:
             sed -i '/CONFIG_WIREGUARD/d' "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_EUICC/d' "${DEFCONFIG_PATH}"
           fi
-          
+                    
           # Kernel Name defconfig settings
           echo "Modifying defconfig for custom kernel name..."
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' "${DEFCONFIG_PATH}"
