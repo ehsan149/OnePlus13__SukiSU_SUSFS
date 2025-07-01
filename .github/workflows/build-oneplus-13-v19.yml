@@ -307,6 +307,8 @@ jobs:
             echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
             cd $GITHUB_WORKSPACE/kernel_workspace
             git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
+            echo "--- Checking ADIOS version from source ---"
+            grep -r "ADIOS_VERSION" ./adios_temp/
             mkdir -p ./kernel_platform/common/block/adios
             cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
             rm -rf ./adios_temp
