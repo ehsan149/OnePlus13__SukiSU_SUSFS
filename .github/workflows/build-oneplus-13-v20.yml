@@ -296,7 +296,7 @@ jobs:
            if true; then
              echo "Applying local Polly source patch..."
              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-             patch -p1 < $GITHUB_WORKSPACE/polly5.patch
+             patch -p1 < $GITHUB_WORKSPACE/polly6.patch
             echo "Polly source patch applied."
            fi
           
