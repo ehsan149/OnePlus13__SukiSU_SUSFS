@@ -296,8 +296,23 @@ jobs:
            if true; then
              echo "Applying local Polly source patch..."
              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-             patch -p1 < $GITHUB_WORKSPACE/polly7.patch
-            echo "Polly source patch applied."
+             sed -i "/config CFI_PERMISSIVE/i \
+             config LLVM_POLLY\n\
+                 bool \"Enable LLVM's polyhedral loop optimizer (Polly)\"\n\
+                 help\n\
+                   This option enables LLVM's polyhedral loop optimizer known as Polly.\n\
+                   Polly is able to optimize various loops throughout the kernel for\n\
+                   maximum cache locality. This requires an LLVM toolchain explicitly\n\
+                   compiled with Polly support.\n" arch/Kconfig
+             
+             sed -i "/KBUILD_RUSTFLAGS += -Coverflow-checks/a \
+             \n# Enable Polly Optimizer\n\
+             ifdef CONFIG_LLVM_POLLY\n\
+             KBUILD_CFLAGS	+= -mllvm -polly\n\
+             endif\n" Makefile
+
+             echo "Polly source modifications applied successfully."
+           
            fi
           
           if ${{ inputs.enable_le9uo }}; then
