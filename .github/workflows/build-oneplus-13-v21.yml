@@ -336,6 +336,17 @@ jobs:
 
              sed -i '/KBUILD_RUSTFLAGS += -Coverflow-checks/r /tmp/polly_flags.txt' Makefile
              
+             echo "Applying Polly modifications to init/Kconfig..."
+             sed -i '/default CC_OPTIMIZE_FOR_PERFORMANCE/d' init/Kconfig
+             sed -i "/prompt \"Compiler optimization level\"/a \\
+             \n\
+             default CC_OPTIMIZE_FOR_PERFORMANCE_O3\n\
+             config CC_OPTIMIZE_FOR_PERFORMANCE_O3\n\
+             \tbool \"Optimize more for performance (-O3)\"\\
+             \thelp\\
+             \t  Choosing this option will pass \\\"-O3\\\" to your compiler to optimize\\
+             \t  the kernel yet more for performance.\n" init/Kconfig
+             
              
              echo "Polly source modifications applied successfully using robust method."
            
@@ -479,7 +490,7 @@ jobs:
            if true; then
              echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
             
            fi  
