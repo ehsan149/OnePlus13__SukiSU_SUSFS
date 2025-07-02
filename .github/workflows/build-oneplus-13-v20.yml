@@ -294,7 +294,7 @@ jobs:
           echo "Applying custom and experimental patches..."
           
           if true; then
-             echo "Applying local Polly source patch..."
+             echo "Applying Full Polly source modifications via sed..."
              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
              sed -i "/config CFI_PERMISSIVE/i \
              config LLVM_POLLY\n\
@@ -306,9 +306,31 @@ jobs:
                    compiled with Polly support.\n" arch/Kconfig
              
              sed -i '/KBUILD_RUSTFLAGS += -Coverflow-checks/a \
-             \n# Enable Polly Optimizer with basic flags\
+             \n# Enable Polly Optimizer with Full Aggressive Set\
              \nifdef CONFIG_LLVM_POLLY\
-             \n	KBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly\
+             \n\tKBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly \\\
+             \n\t\t   -mllvm -polly-run-inliner \\\
+             \n\t\t   -mllvm -polly-ast-use-context \\\
+             \n\t\t   -mllvm -polly-detect-keep-going \\\
+             \n\t\t   -mllvm -polly-invariant-load-hoisting \\\
+             \n\t\t   -mllvm -polly-vectorizer=stripmine\
+             \n\
+             \n\tifeq ($(shell test $(CONFIG_CLANG_VERSION) -gt 130000; echo $$?),0)\
+             \n\tKBUILD_CFLAGS	+= -mllvm -polly-loopfusion-greedy=1 \\\
+             \n\t\t   -mllvm -polly-reschedule=1 \\\
+             \n\t\t   -mllvm -polly-postopts=1 \\\
+             \n\t\t   -mllvm -polly-num-threads=0 \\\
+             \n\t\t   -mllvm -polly-omp-backend=LLVM \\\
+             \n\t\t   -mllvm -polly-scheduling=dynamic \\\
+             \n\t\t   -mllvm -polly-scheduling-chunksize=1\
+             \n\telse\
+             \n\tKBUILD_CFLAGS	+= -mllvm -polly-opt-fusion=max\
+             \n\tendif\
+             \n\
+             \n\tifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION\
+             \n\tPOLLY_FLAGS	+= -mllvm -polly-run-dce\
+             \n\tendif\
+                    
              \nendif' Makefile
 
              echo "Polly source modifications applied successfully."
