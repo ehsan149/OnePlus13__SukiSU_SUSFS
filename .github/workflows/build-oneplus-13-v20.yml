@@ -306,9 +306,9 @@ jobs:
                    compiled with Polly support.\n" arch/Kconfig
              
              sed -i '/KBUILD_RUSTFLAGS += -Coverflow-checks/a \
-             \n# Enable Polly Optimizer\
+             \n# Enable Polly Optimizer with basic flags\
              \nifdef CONFIG_LLVM_POLLY\
-             \n	KBUILD_CFLAGS	+= -mllvm -polly\
+             \n	KBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly\
              \nendif' Makefile
 
              echo "Polly source modifications applied successfully."
