@@ -293,7 +293,7 @@ jobs:
           set -e
           echo "Applying custom and experimental patches..."
           
-           if true; then
+          if true; then
              echo "Applying local Polly source patch..."
              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
              sed -i "/config CFI_PERMISSIVE/i \
@@ -305,15 +305,15 @@ jobs:
                    maximum cache locality. This requires an LLVM toolchain explicitly\n\
                    compiled with Polly support.\n" arch/Kconfig
              
-             sed -i "/KBUILD_RUSTFLAGS += -Coverflow-checks/a \
-             \n# Enable Polly Optimizer\n\
-             ifdef CONFIG_LLVM_POLLY\n\
-             KBUILD_CFLAGS	+= -mllvm -polly\n\
-             endif\n" Makefile
+             sed -i '/KBUILD_RUSTFLAGS += -Coverflow-checks/a \
+             \n# Enable Polly Optimizer\
+             \nifdef CONFIG_LLVM_POLLY\
+             \n	KBUILD_CFLAGS	+= -mllvm -polly\
+             \nendif' Makefile
 
              echo "Polly source modifications applied successfully."
            
-           fi
+          fi
           
           if ${{ inputs.enable_le9uo }}; then
             echo "Applying custom le9uo patch for kernel 6.6..."
