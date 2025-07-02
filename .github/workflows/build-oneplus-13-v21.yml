@@ -305,16 +305,17 @@ jobs:
                    maximum cache locality. This requires an LLVM toolchain explicitly\n\
                    compiled with Polly support.\n" arch/Kconfig
 
-             echo "Applying Polly modifications to init/Kconfig..."
-             sed -i '/default CC_OPTIMIZE_FOR_PERFORMANCE/d' init/Kconfig
-             sed -i "/prompt \"Compiler optimization level\"/a \\
-             \n\
-             default CC_OPTIMIZE_FOR_PERFORMANCE_O3\n\
-             config CC_OPTIMIZE_FOR_PERFORMANCE_O3\n\
-             \tbool \"Optimize more for performance (-O3)\"\\
-             \thelp\\
-             \t  Choosing this option will pass \\\"-O3\\\" to your compiler to optimize\\
-             \t  the kernel yet more for performance.\n" init/Kconfig
+             cat <<'EOF' > /tmp/kconfig_changes.txt
+             # "Applying Polly modifications to init/Kconfig..."
+          default CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          config CC_OPTIMIZE_FOR_PERFORMANCE_O3
+              bool "Optimize more for performance (-O3)"
+              help
+                Choosing this option will pass "-O3" to your compiler to optimize
+                the kernel yet more for performance.
+          EOF
+                sed -i '/default CC_OPTIMIZE_FOR_PERFORMANCE/d' init/Kconfig
+                sed -i '/prompt "Compiler optimization level"/r /tmp/kconfig_changes.txt' init/Kconfig
              
              cat <<'EOF' > /tmp/polly_flags.txt
              # Enable Polly Optimizer (Full Aggressive Set)
