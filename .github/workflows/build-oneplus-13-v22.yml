@@ -304,19 +304,18 @@ jobs:
                    Polly is able to optimize various loops throughout the kernel for\n\
                    maximum cache locality. This requires an LLVM toolchain explicitly\n\
                    compiled with Polly support.\n" arch/Kconfig
-             # cat <<'EOF' > /tmp/kconfig_changes.txt
+                 cat <<-'EOF' > /tmp/kconfig_changes.txt
+             default CC_OPTIMIZE_FOR_PERFORMANCE_O3
+             config CC_OPTIMIZE_FOR_PERFORMANCE_O3
+                 bool "Optimize more for performance (-O3)"
+                 help
+                   Choosing this option will pass "-O3" to your compiler to optimize
+                   the kernel yet more for performance.
+             EOF
+             sed -i '/default CC_OPTIMIZE_FOR_PERFORMANCE/d' init/Kconfig
+             sed -i '/prompt "Compiler optimization level"/r /tmp/kconfig_changes.txt' init/Kconfig
              
-          # default CC_OPTIMIZE_FOR_PERFORMANCE_O3
-          # config CC_OPTIMIZE_FOR_PERFORMANCE_O3
-              # bool "Optimize more for performance (-O3)"
-              # help
-                # Choosing this option will pass "-O3" to your compiler to optimize
-                # the kernel yet more for performance.
-          # EOF
-                # sed -i '/default CC_OPTIMIZE_FOR_PERFORMANCE/d' init/Kconfig
-                # sed -i '/prompt "Compiler optimization level"/r /tmp/kconfig_changes.txt' init/Kconfig
-             
-             cat <<'EOF' > /tmp/polly_flags.txt
+             cat <<-'EOF' > /tmp/polly_flags.txt
              # Enable Polly Optimizer (Full Aggressive Set)
           ifdef CONFIG_LLVM_POLLY
              KBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly \
@@ -488,8 +487,7 @@ jobs:
            if true; then
              echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "${DEFCONFIG_PATH}"
-             # echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
             
            fi  
