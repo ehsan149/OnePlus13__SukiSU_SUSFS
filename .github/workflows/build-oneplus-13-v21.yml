@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v20
+name: OnePlus 13 Build v21
 on:
   workflow_dispatch:
     inputs:
@@ -304,36 +304,49 @@ jobs:
                    Polly is able to optimize various loops throughout the kernel for\n\
                    maximum cache locality. This requires an LLVM toolchain explicitly\n\
                    compiled with Polly support.\n" arch/Kconfig
+             # cat <<'EOF' > /tmp/kconfig_changes.txt
              
-             sed -i '/KBUILD_RUSTFLAGS += -Coverflow-checks/a \
-             \n# Enable Polly Optimizer with Full Aggressive Set\
-             \nifdef CONFIG_LLVM_POLLY\
-             \n\tKBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly \\\
-             \n\t\t   -mllvm -polly-run-inliner \\\
-             \n\t\t   -mllvm -polly-ast-use-context \\\
-             \n\t\t   -mllvm -polly-detect-keep-going \\\
-             \n\t\t   -mllvm -polly-invariant-load-hoisting \\\
-             \n\t\t   -mllvm -polly-vectorizer=stripmine\
-             \n\
-             \n\tifeq ($(shell test $(CONFIG_CLANG_VERSION) -gt 130000; echo $$?),0)\
-             \n\tKBUILD_CFLAGS	+= -mllvm -polly-loopfusion-greedy=1 \\\
-             \n\t\t   -mllvm -polly-reschedule=1 \\\
-             \n\t\t   -mllvm -polly-postopts=1 \\\
-             \n\t\t   -mllvm -polly-num-threads=0 \\\
-             \n\t\t   -mllvm -polly-omp-backend=LLVM \\\
-             \n\t\t   -mllvm -polly-scheduling=dynamic \\\
-             \n\t\t   -mllvm -polly-scheduling-chunksize=1\
-             \n\telse\
-             \n\tKBUILD_CFLAGS	+= -mllvm -polly-opt-fusion=max\
-             \n\tendif\
-             \n\
-             \n\tifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION\
-             \n\tPOLLY_FLAGS	+= -mllvm -polly-run-dce\
-             \n\tendif\
+          # default CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          # config CC_OPTIMIZE_FOR_PERFORMANCE_O3
+              # bool "Optimize more for performance (-O3)"
+              # help
+                # Choosing this option will pass "-O3" to your compiler to optimize
+                # the kernel yet more for performance.
+          # EOF
+                # sed -i '/default CC_OPTIMIZE_FOR_PERFORMANCE/d' init/Kconfig
+                # sed -i '/prompt "Compiler optimization level"/r /tmp/kconfig_changes.txt' init/Kconfig
+             
+             cat <<'EOF' > /tmp/polly_flags.txt
+             # Enable Polly Optimizer (Full Aggressive Set)
+          ifdef CONFIG_LLVM_POLLY
+             KBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly \
+                         -mllvm -polly-run-inliner \
+                         -mllvm -polly-ast-use-context \
+                         -mllvm -polly-detect-keep-going \
+                         -mllvm -polly-invariant-load-hoisting \
+                         -mllvm -polly-vectorizer=stripmine
+                         
+             ifeq ($(shell test $(CONFIG_CLANG_VERSION) -gt 130000; echo $$?),0)
+             KBUILD_CFLAGS	+= -mllvm -polly-loopfusion-greedy=1 \
+                    -mllvm -polly-reschedule=1 \
+                    -mllvm -polly-postopts=1 \
+                    -mllvm -polly-num-threads=0 \
+                    -mllvm -polly-omp-backend=LLVM \
+                    -mllvm -polly-scheduling=dynamic \
+                    -mllvm -polly-scheduling-chunksize=1
                     
-             \nendif' Makefile
+             else
+             KBUILD_CFLAGS	+= -mllvm -polly-opt-fusion=max
+             endif
 
-             echo "Polly source modifications applied successfully."
+             ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
+             POLLY_FLAGS	+= -mllvm -polly-run-dce       
+             endif       
+          endif
+          EOF
+
+             sed -i '/KBUILD_RUSTFLAGS += -Coverflow-checks/r /tmp/polly_flags.txt' Makefile
+             echo "Polly source modifications applied successfully using robust method."
            
           fi
           
@@ -470,17 +483,13 @@ jobs:
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
           fi
           
-          # Enable pstore for crash logging
-            echo "# Enable pstore for crash logging" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_PSTORE=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_PSTORE_CONSOLE=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_PSTORE_RAM=y" >> "${DEFCONFIG_PATH}"
-            
+                      
           # Add Polly config 
            if true; then
              echo "# LLVM Polly Optimizer" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LLVM_POLLY=y" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "${DEFCONFIG_PATH}"
+             # echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> "${DEFCONFIG_PATH}"
              echo "CONFIG_LD_DEAD_CODE_DATA_ELIMINATION=y" >> "${DEFCONFIG_PATH}"
             
            fi  
@@ -618,3 +627,4 @@ jobs:
         with:
           name: ${{ steps.prepare_zip.outputs.zip_filename }}
           path: ${{ steps.prepare_zip.outputs.zip_filename }}
+          
