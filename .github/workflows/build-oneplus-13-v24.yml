@@ -403,10 +403,8 @@ jobs:
             git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
             echo "--- Checking ADIOS version from source ---"
             grep -r "ADIOS_VERSION" ./adios_temp/ || true
-            mkdir -p ./kernel_platform/common/block/adios
-            cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
-            rm -rf ./adios_temp
-            
+            mv ./adios_temp ./kernel_platform/common/block/adios
+           
             echo "Patching build system for ADIOS..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             echo 'source "block/adios/Kconfig"' >> ./block/Kconfig.iosched
