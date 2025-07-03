@@ -397,19 +397,27 @@ jobs:
             echo "workingset_protection enabled by default."
           fi
 
-          if [ "${{ inputs.enable_adios }}" = "true" ]; then
+          if ${{ inputs.enable_adios }}; then
             echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
             cd $GITHUB_WORKSPACE/kernel_workspace
             git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
             echo "--- Checking ADIOS version from source ---"
-            grep -r "ADIOS_VERSION" ./adios_temp/
+            grep -r "ADIOS_VERSION" ./adios_temp/ || true
             mkdir -p ./kernel_platform/common/block/adios
             cp -r ./adios_temp/* ./kernel_platform/common/block/adios/
             rm -rf ./adios_temp
+            echo "Integrating ADIOS into the build system..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block
             sed -i '/source "block\/bfq\/Kconfig"/a source "block/adios/Kconfig"' Kconfig
-            sed -i '/obj-\$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq\//a obj-\$(CONFIG_IOSCHED_ADIOS)	+= adios\/' Makefile
-            echo "ADIOS files integrated into source tree."
+            cat <<'EOF' >> Kconfig
+            # Added by ADIOS script
+          source "block/adios/Kconfig"
+          EOF
+            cat <<'EOF' >> Makefile
+            # Added by ADIOS script
+          obj-$(CONFIG_IOSCHED_ADIOS)	+= adios/
+          EOF
+            echo "ADIOS files integrated into source tree successfully."
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
