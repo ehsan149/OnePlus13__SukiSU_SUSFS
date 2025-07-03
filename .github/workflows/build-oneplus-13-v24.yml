@@ -403,21 +403,23 @@ jobs:
             # 1. Clone the reference kernel
             echo "--- Cloning reference repository ---"
             git clone https://github.com/brokestar233/android_kernel_common_oneplus_sm8750.git adios_source_temp
-            echo "--- Searching for 'adios' directory inside the clone ---"
-            find ./adios_source_temp -type d -name "adios"
-            echo "--- Listing contents of the 'block' directory ---"
-            ls -l ./adios_source_temp/block/
-            # 3. Attempt to copy the directory
-            echo "--- Attempting to copy the directory ---"
-            cp -r ./adios_source_temp/block/adios ./kernel_platform/common/block/
-            # 4. Clean up the temporary clone
+            # 2. Copy ONLY the adios.c file to our block directory
+            cp ./adios_source_temp/block/adios.c ./kernel_platform/common/block/
+            # 3. Clean up the temporary clone
             rm -rf ./adios_source_temp
-            # 5. Integrate the new scheduler into the build system
+            # 4. Integrate the new scheduler into the build system
             cd ./kernel_platform/common
-            echo 'source "block/adios/Kconfig"' >> ./block/Kconfig.iosched
-            echo 'obj-$(CONFIG_IOSCHED_ADIOS)      += adios/' >> ./block/Makefile
-            echo "ADIOS I/O Scheduler added successfully."
-            
+            # Add the build rule for the adios.o object file to the Makefile
+            echo 'obj-$(CONFIG_IOSCHED_ADIOS)      += adios.o' >> ./block/Makefile
+            # Add the Kconfig entry for ADIOS directly into the Kconfig.iosched file
+            cat <<'EOF' >> ./block/Kconfig.iosched
+          config IOSCHED_ADIOS
+              tristate "ADIOS I/O scheduler"
+              default y
+              help
+                The Adaptive Deadline I/O Scheduler.
+          EOF
+            echo "ADIOS I/O Scheduler integrated successfully."
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
