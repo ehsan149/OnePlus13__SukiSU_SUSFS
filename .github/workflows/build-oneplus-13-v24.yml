@@ -402,16 +402,13 @@ jobs:
             cd $GITHUB_WORKSPACE/kernel_workspace
             # 1. Clone the reference kernel
             echo "--- Cloning reference repository ---"
-            git clone https://github.com/brokestar233/android_kernel_common_oneplus_sm8750.git adios_source_temp --depth=1
-            # 2. DEBUGGING
-            echo "--- Listing contents of adios_source_temp directory ---"
-            ls -l adios_source_temp/
-            # 3.Attempting to copy the directory
+            git clone https://github.com/brokestar233/android_kernel_common_oneplus_sm8750.git adios_source_temp
+            # 2. Copy the 'adios' directory from the correct source path
             echo "--- Attempting to copy the directory ---"
             cp -r ./adios_source_temp/block/adios ./kernel_platform/common/block/
-            # 4. Clean up the temporary clone
+            # 3. Clean up the temporary clone
             rm -rf ./adios_source_temp
-            # 5. Integrate the new scheduler into the build system
+            # 4. Integrate the new scheduler into the build system
             cd ./kernel_platform/common
             echo 'source "block/adios/Kconfig"' >> ./block/Kconfig.iosched
             echo 'obj-$(CONFIG_IOSCHED_ADIOS)      += adios/' >> ./block/Makefile
