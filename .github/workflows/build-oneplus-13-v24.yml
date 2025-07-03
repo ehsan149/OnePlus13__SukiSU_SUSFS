@@ -397,7 +397,7 @@ jobs:
             echo "workingset_protection enabled by default."
           fi
 
-          if ${{ inputs.enable_adios }}; then
+          if [ "${{ inputs.enable_adios }}" = "true" ]; then
             echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
             cd $GITHUB_WORKSPACE/kernel_workspace
             git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
@@ -485,7 +485,7 @@ jobs:
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
           
           # Add ADIOS config if enabled
-          if ${{ inputs.enable_adios }}; then
+          if [ "${{ inputs.enable_adios }}" = "true" ]; then
             echo "# [EXPERIMENTAL] ADIOS I/O Scheduler Settings" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
