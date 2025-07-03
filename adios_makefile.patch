@@ -1,0 +1,7 @@
+--- a/block/Makefile
++++ b/block/Makefile
+@@ -8,3 +8,4 @@
+ obj-$(CONFIG_BLK_DEV_INTEGRITY)	+= blk-integrity.o
+ obj-$(CONFIG_BLK_CMDLINE_PARSER)	+= blk-cmdline-parser.o
+ obj-$(CONFIG_BFQ_GROUP_IOSCHED)	+= bfq/
++obj-$(CONFIG_IOSCHED_ADIOS)	+= adios/
