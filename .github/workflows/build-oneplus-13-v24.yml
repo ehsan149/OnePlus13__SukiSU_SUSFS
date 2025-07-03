@@ -400,7 +400,7 @@ jobs:
           if ${{ inputs.enable_adios }}; then
             echo "Adding EXPERIMENTAL ADIOS I/O Scheduler..."
             cd $GITHUB_WORKSPACE/kernel_workspace
-            git clone https://github.com/firelzrd/adios.git ./adios_temp --depth=1
+            git clone --single-branch -b v2.0.0-ksrc https://github.com/firelzrd/adios.git ./adios_temp --depth=1
             echo "--- Checking ADIOS version from source ---"
             grep -r "ADIOS_VERSION" ./adios_temp/ || true
             mv ./adios_temp ./kernel_platform/common/block/adios
