@@ -401,11 +401,11 @@ jobs:
             echo "Adding EXPERIMENTAL ADIOS I/O Scheduler v2.1.3..."
             cd $GITHUB_WORKSPACE/kernel_workspace
             git clone https://github.com/brokestar233/android_kernel_common_oneplus_sm8750.git adios_source_temp --depth=1
-            echo "--- Checking ADIOS version from source ---"
-            grep -r "ADIOS_VERSION" ./adios_temp/ || true
+            
+            
             cp -r ./adios_source_temp/block/adios ./kernel_platform/common/block/
             rm -rf ./adios_source_temp
-            echo "Patching build system for ADIOS..."
+            # 4. Integrate the new scheduler into the build system
             cd ./kernel_platform/common
             echo 'source "block/adios/Kconfig"' >> ./block/Kconfig.iosched
             echo 'obj-$(CONFIG_IOSCHED_ADIOS)      += adios/' >> ./block/Makefile
