@@ -1,0 +1,8 @@
+--- a/block/Kconfig.iosched
++++ b/block/Kconfig.iosched
+@@ -2,3 +2,5 @@
+ source "block/bfq/Kconfig"
+
+ endif # IOSCHED
++
++source "block/adios/Kconfig"
