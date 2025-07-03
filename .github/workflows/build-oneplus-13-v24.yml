@@ -409,8 +409,8 @@ jobs:
             
             echo "Patching build system for ADIOS..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            patch -p1 < $GITHUB_WORKSPACE/adios_kconfig.patch
-            patch -p1 < $GITHUB_WORKSPACE/adios_makefile.patch
+            echo 'source "block/adios/Kconfig"' >> ./block/Kconfig.iosched
+            echo 'obj-$(CONFIG_IOSCHED_ADIOS)	+= adios/' >> ./block/Makefile
             echo "ADIOS build system integration complete."
           fi
 
