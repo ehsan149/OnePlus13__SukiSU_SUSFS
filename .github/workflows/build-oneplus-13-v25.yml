@@ -400,17 +400,17 @@ jobs:
           if ${{ inputs.enable_adios }}; then
             echo "Adding EXPERIMENTAL ADIOS I/O Scheduler v2.1.3..."
             cd $GITHUB_WORKSPACE/kernel_workspace
-            # 1. Clone the official ADIOS repository to get the patches
+            # 1. Clone the official ADIOS repository to get the latest patches
             git clone https://github.com/firelzrd/adios.git adios_patches_temp
             # 2. Navigate to your kernel source directory
             cd ./kernel_platform/common
-            # 3. Apply the main source patch for ADIOS
-            # We use the patch for 6.16-rc1 as it's the closest to your 6.6 kernel
+            # 3. Apply the main source patch for ADIOS (using the new v2.1.3 filename)
+            echo "--- Applying ADIOS v2.1.3 source patch ---"
             echo "--- Applying ADIOS v2.1.1 source patch ---"
-            patch -p1 < ../../adios_patches_temp/patches/stable/0001-linux6.16-rc1-ADIOS-2.1.1.patch
-            # 4. Apply the patch to make ADIOS the default scheduler
+           patch -p1 < ../../adios_patches_temp/patches/stable/0001-linux6.16-rc1-ADIOS-2.1.3.patch
+            # 4. Apply the patch to make ADIOS the default scheduler (using the correct path)
             echo "--- Applying patch to make ADIOS the default I/O scheduler ---"
-            patch -p1 < ../../adios_patches_temp/patches/stable/0002-Make-ADIOS-the-Default-I-O-scheduler.patch
+            patch -p1 < ../../adios_patches_temp/patches/0002-Make-ADIOS-the-Default-I-O-scheduler.patch
             # 5. Clean up the temporary clone
             cd ../..
             rm -rf ./adios_patches_temp
