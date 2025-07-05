@@ -398,11 +398,13 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-            echo "Applying ONLY the base ADIOS import patch to test for stability..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            # Download and apply ONLY the BASE commit that adds the feature
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/770c7d8b331f2be9e5993da4d97e7ab90c27fb34.patch" | patch -p1
-            echo "Base ADIOS patch applied. No updates were applied for this test."
+            PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone.patch"
+            if [ -f "$PATCH_FILE" ]; then
+              echo "Applying ADIOS patch..."
+              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+              patch -p1 < "$PATCH_FILE"
+            else  
+              echo "WARN: ADIOS patch file not found, skipping."
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
