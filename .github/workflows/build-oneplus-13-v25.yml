@@ -539,16 +539,6 @@ jobs:
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
 
-      - name: Verify File Placement For Debugging
-        run: |
-          echo "--- Verifying ADIOS file placement before build ---"
-          ls -lR $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/
-          echo "--- Content of Kconfig.iosched ---"
-          cat $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/Kconfig.iosched
-          echo "--- Content of block/Makefile ---"
-          cat $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/Makefile
-          echo "--- Verification complete ---"
-       
       - name: Build Kernel
         run: |
             set -e
