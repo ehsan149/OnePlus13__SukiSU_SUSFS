@@ -398,13 +398,14 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-            PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone.patch"
-            if [ -f "$PATCH_FILE" ]; then
-              echo "Applying ADIOS patch..."
-              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-              patch -p1 < "$PATCH_FILE"
-            else  
-              echo "WARN: ADIOS patch file not found, skipping."
+             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone.patch"
+             if [ -f "$PATCH_FILE" ]; then
+                echo "Applying ADIOS patch..."
+                cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+                patch -p1 < "$PATCH_FILE"
+             else  
+               echo "WARN: ADIOS patch file not found, skipping."
+             fi
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
