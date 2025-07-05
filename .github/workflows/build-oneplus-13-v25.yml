@@ -398,11 +398,14 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-            echo "Applying ONLY the base ADIOS import patch to test for stability..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            # Download and apply ONLY the BASE commit that adds the feature
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/770c7d8b331f2be9e5993da4d97e7ab90c27fb34.patch" | patch -p1
-            echo "Base ADIOS patch applied. No updates were applied for this test."
+             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone.patch"
+             if [ -f "$PATCH_FILE" ]; then
+                echo "Applying ADIOS patch..."
+                cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+                patch -p1 < "$PATCH_FILE"
+             else  
+               echo "WARN: ADIOS patch file not found, skipping."
+             fi
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
@@ -477,7 +480,15 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
           
-                
+          # Enable pstore/ramoops for kernel panic logging
+          echo "CONFIG_PSTORE=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_CONSOLE=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_PMSG=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_RAM=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_RAMOOPS=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_RAMOOPS_DEFAULT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240" >> "${DEFCONFIG_PATH}"
+      
                       
           # Add Polly config 
            if true; then
