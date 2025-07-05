@@ -398,27 +398,11 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-            echo "Adding and updating ADIOS scheduler using a series of compatible commit patches..."
+            echo "Applying ONLY the base ADIOS import patch to test for stability..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            # 1. echo "Applying base ADIOS import commit..."
-            echo "Applying base ADIOS import commit..."
+            # Download and apply ONLY the BASE commit that adds the feature
             curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/770c7d8b331f2be9e5993da4d97e7ab90c27fb34.patch" | patch -p1
-            
-            # 2. Applying subsequent ADIOS upgrade commits...
-            echo "Applying subsequent ADIOS upgrade commits..."
-            echo "Applying subsequent ADIOS upgrade commits..."
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/5a942579ccb147cf8a94e6607ed4c0db84695909.patch" | patch -p1
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/e10276bdffb96e4c6e17d380287bbbe41179830c.patch" | patch -p1
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/3acf0dc30ec04adf6ddfe91ce6a5f64b07fd9c67.patch" | patch -p1
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/43aa46d6e74244a2a8340a7fc692f56a0cddb4d8.patch" | patch -p1
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/34a697778cf5a2d7d7b33f4ff8846ca318ccb9bd.patch" | patch -p1
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/fc7ee612981f106d2968f61a3e01327efaecc981.patch" | patch -p1
-            
-            # 3. Applying final upgrade to v2.1.3...
-            echo "Applying final upgrade to v2.1.3..."
-            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/81a3efd1e043d1a0440719b6ce928d0dd87a9c53.patch" | patch -p1
-           
-            echo "ADIOS I/O Scheduler patched successfully."
+            echo "Base ADIOS patch applied. No updates were applied for this test."
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
@@ -556,16 +540,6 @@ jobs:
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
 
-      - name: Verify File Placement For Debugging
-        run: |
-          echo "--- Verifying ADIOS file placement before build ---"
-          ls -lR $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/
-          echo "--- Content of Kconfig.iosched ---"
-          cat $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/Kconfig.iosched
-          echo "--- Content of block/Makefile ---"
-          cat $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/block/Makefile
-          echo "--- Verification complete ---"
-       
       - name: Build Kernel
         run: |
             set -e
