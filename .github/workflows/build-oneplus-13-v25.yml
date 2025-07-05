@@ -480,7 +480,15 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
           
-                
+          # Enable pstore/ramoops for kernel panic logging
+          echo "CONFIG_PSTORE=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_CONSOLE=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_PMSG=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_RAM=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_RAMOOPS=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_RAMOOPS_DEFAULT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240" >> "${DEFCONFIG_PATH}"
+      
                       
           # Add Polly config 
            if true; then
