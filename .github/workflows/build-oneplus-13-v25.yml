@@ -405,7 +405,8 @@ jobs:
                 patch -p1 < "$PATCH_FILE"
              else  
                echo "WARN: ADIOS patch file not found, skipping."
-             exit 1
+               exit 1
+             fi
           fi
 
       - name: Verify ADIOS Patch Application
