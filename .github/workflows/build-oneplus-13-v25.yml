@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v24
+name: OnePlus 13 Build v25
 on:
   workflow_dispatch:
     inputs:
@@ -398,28 +398,27 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-            echo "Adding EXPERIMENTAL ADIOS I/O Scheduler v2.1.3..."
-            cd $GITHUB_WORKSPACE/kernel_workspace
-            # 1. Clone the reference kernel
-            echo "--- Cloning reference repository ---"
-            git clone https://github.com/brokestar233/android_kernel_common_oneplus_sm8750.git adios_source_temp
-            # 2. Copy ONLY the adios.c file to our block directory
-            cp ./adios_source_temp/block/adios.c ./kernel_platform/common/block/
-            # 3. Clean up the temporary clone
-            rm -rf ./adios_source_temp
-            # 4. Integrate the new scheduler into the build system
-            cd ./kernel_platform/common
-            # Add the build rule for the adios.o object file to the Makefile
-            echo 'obj-$(CONFIG_IOSCHED_ADIOS)      += adios.o' >> ./block/Makefile
-            # Add the Kconfig entry for ADIOS directly into the Kconfig.iosched file
-            cat <<'EOF' >> ./block/Kconfig.iosched
-          config IOSCHED_ADIOS
-              tristate "ADIOS I/O scheduler"
-              default y
-              help
-                The Adaptive Deadline I/O Scheduler.
-          EOF
-            echo "ADIOS I/O Scheduler integrated successfully."
+            echo "Adding and updating ADIOS scheduler using a series of compatible commit patches..."
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            # 1. echo "Applying base ADIOS import commit..."
+            echo "Applying base ADIOS import commit..."
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/770c7d8b331f2be9e5993da4d97e7ab90c27fb34.patch" | patch -p1
+            
+            # 2. Applying subsequent ADIOS upgrade commits...
+            echo "Applying subsequent ADIOS upgrade commits..."
+            echo "Applying subsequent ADIOS upgrade commits..."
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/5a942579ccb147cf8a94e6607ed4c0db84695909.patch" | patch -p1
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/e10276bdffb96e4c6e17d380287bbbe41179830c.patch" | patch -p1
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/3acf0dc30ec04adf6ddfe91ce6a5f64b07fd9c67.patch" | patch -p1
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/43aa46d6e74244a2a8340a7fc692f56a0cddb4d8.patch" | patch -p1
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/34a697778cf5a2d7d7b33f4ff8846ca318ccb9bd.patch" | patch -p1
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/fc7ee612981f106d2968f61a3e01327efaecc981.patch" | patch -p1
+            
+            # 3. Applying final upgrade to v2.1.3...
+            echo "Applying final upgrade to v2.1.3..."
+            curl -L "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/81a3efd1e043d1a0440719b6ce928d0dd87a9c53.patch" | patch -p1
+           
+            echo "ADIOS I/O Scheduler patched successfully."
           fi
 
       - name: Add Kernel Configuration Settings and Custom Kernel Name
@@ -494,16 +493,7 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "${DEFCONFIG_PATH}"
           
-          # Add ADIOS config if enabled
-          if [ "${{ inputs.enable_adios }}" = "true" ]; then
-            echo "# [EXPERIMENTAL] ADIOS I/O Scheduler Settings" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
-            echo "# Disable other MQ schedulers to ensure ADIOS is the true default" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_MQ_IOSCHED_DEADLINE=n" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_MQ_IOSCHED_KYBER=n" >> "${DEFCONFIG_PATH}"
-          fi
-          
+                
                       
           # Add Polly config 
            if true; then
