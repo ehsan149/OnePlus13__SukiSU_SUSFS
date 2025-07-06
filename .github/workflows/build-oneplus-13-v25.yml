@@ -398,16 +398,34 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone.patch"
+             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone2.patch"
              if [ -f "$PATCH_FILE" ]; then
                 echo "Applying ADIOS patch..."
                 cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
                 patch -p1 < "$PATCH_FILE"
              else  
                echo "WARN: ADIOS patch file not found, skipping."
+               exit 1
              fi
           fi
 
+      - name: Verify ADIOS Patch Application
+        run: |
+          set -e
+          echo "Verifying ADIOS patch application..."
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          if [ ! -f "block/adios.c" ]; then
+            echo "ERROR: block/adios.c not found!"
+            exit 1
+          fi
+          echo "Verification PASSED: block/adios.c exists."
+          grep -q "config MQ_IOSCHED_ADIOS" block/Kconfig.iosched
+          echo "Verification PASSED: Kconfig.iosched is patched."
+          grep -q "obj-\$(CONFIG_MQ_IOSCHED_ADIOS)	+= adios.o" block/Makefile
+          echo "Verification PASSED: Makefile is patched."
+          echo " ADIOS patch successfully verified."
+
+      
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
