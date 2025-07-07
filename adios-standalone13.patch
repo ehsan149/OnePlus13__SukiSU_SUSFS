@@ -1,0 +1,276 @@
+diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
+index 27f11320b..7e773b7f3 100644
+--- a/block/Kconfig.iosched
++++ b/block/Kconfig.iosched
+@@ -16,6 +16,20 @@ config MQ_IOSCHED_KYBER
+ 	  synchronous writes, it will self-tune queue depths to achieve that
+ 	  goal.
+ 
++config MQ_IOSCHED_ADIOS
++	tristate "Adaptive Deadline I/O scheduler"
++	default y
++	help
++	  The Adaptive Deadline I/O Scheduler (ADIOS) is a multi-queue I/O
++	  scheduler with learning-based adaptive latency control.
++
++config MQ_IOSCHED_DEFAULT_ADIOS
++	bool "Enable ADIOS I/O scheduler as default MQ I/O scheduler"
++	depends on MQ_IOSCHED_ADIOS=y
++	default y
++	help
++	  Enable the ADIOS I/O scheduler as the default scheduler for MQ I/O.
++	  
+ config IOSCHED_BFQ
+ 	tristate "BFQ I/O scheduler"
+ 	select BLK_ICQ
+diff --git a/block/Makefile b/block/Makefile
+index 46ada9dc8..2fd10afba 100644
+--- a/block/Makefile
++++ b/block/Makefile
+@@ -23,6 +23,7 @@ obj-$(CONFIG_BLK_CGROUP_IOLATENCY)	+= blk-iolatency.o
+ obj-$(CONFIG_BLK_CGROUP_IOCOST)	+= blk-iocost.o
+ obj-$(CONFIG_MQ_IOSCHED_DEADLINE)	+= mq-deadline.o
+ obj-$(CONFIG_MQ_IOSCHED_KYBER)	+= kyber-iosched.o
++obj-$(CONFIG_MQ_IOSCHED_ADIOS)	+= adios.o
+ bfq-y				:= bfq-iosched.o bfq-wf2q.o bfq-cgroup.o
+ obj-$(CONFIG_IOSCHED_BFQ)	+= bfq.o
+ 
+diff --git a/block/adios.c b/block/adios.c
+new file mode 100644
+index 000000000..f17a16a3b
+--- /dev/null
++++ b/block/adios.c
+@@ -0,0 +1,232 @@
++// ==================== START: COPY AND PASTE THIS ENTIRE BLOCK INTO block/adios.c ====================
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Minimal ADIOS scheduler for debugging purposes.
++ * Based on the mq-deadline scheduler logic.
++ */
++#include <linux/kernel.h>
++#include <linux/fs.h>
++#include <linux/blkdev.h>
++#include <linux/bio.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++#include <linux/init.h>
++#include <linux/compiler.h>
++#include <linux/rbtree.h>
++#include <linux/sbitmap.h>
++
++#include <trace/events/block.h>
++
++#include "elevator.h"
++#include "blk.h"
++#include "blk-mq.h"
++#include "blk-mq-debugfs.h"
++#include "blk-mq-sched.h"
++
++// --- Renamed constants from mq-deadline ---
++static const int adios_read_expire = HZ / 2;
++static const int adios_write_expire = 5 * HZ;
++static const int adios_writes_starved = 2;
++static const int adios_fifo_batch = 16;
++
++enum adios_data_dir {
++	ADIOS_READ		= READ,
++	ADIOS_WRITE	= WRITE,
++};
++
++enum { ADIOS_DIR_COUNT = 2 };
++
++// --- Renamed structs from mq-deadline ---
++struct adios_data {
++	struct list_head fifo_list[ADIOS_DIR_COUNT];
++	struct rb_root sort_list[ADIOS_DIR_COUNT];
++	unsigned int fifo_batch;
++	unsigned int writes_starved;
++	unsigned int starved;
++	int fifo_expire[ADIOS_DIR_COUNT];
++	bool front_merges;
++	enum adios_data_dir last_dir;
++	sector_t latest_pos[ADIOS_DIR_COUNT];
++	spinlock_t lock;
++};
++
++static inline struct rb_root *
++adios_rb_root(struct adios_data *ad, struct request *rq)
++{
++	return &ad->sort_list[rq_data_dir(rq)];
++}
++
++static void
++adios_add_rq_rb(struct adios_data *ad, struct request *rq)
++{
++	elv_rb_add(adios_rb_root(ad, rq), rq);
++}
++
++static void
++adios_del_rq_rb(struct adios_data *ad, struct request *rq)
++{
++	elv_rb_del(adios_rb_root(ad, rq), rq);
++}
++
++static void adios_remove_request(struct request_queue *q, struct request *rq)
++{
++	struct adios_data *ad = q->elevator->elevator_data;
++	list_del_init(&rq->queuelist);
++	if (!RB_EMPTY_NODE(&rq->rb_node))
++		adios_del_rq_rb(ad, rq);
++}
++
++static void
++adios_move_to_dispatch(struct adios_data *ad, struct request *rq)
++{
++	adios_remove_request(rq->q, rq);
++	rq->rq_flags |= RQF_STARTED;
++}
++
++static bool adios_check_fifo(struct adios_data *ad, enum adios_data_dir data_dir)
++{
++	if (list_empty(&ad->fifo_list[data_dir]))
++		return false;
++
++	struct request *rq = rq_entry_fifo(ad->fifo_list[data_dir].next);
++	return time_is_before_eq_jiffies((unsigned long)rq->fifo_time);
++}
++
++static struct request *
++adios_dispatch_request(struct blk_mq_hw_ctx *hctx)
++{
++	struct request_queue *q = hctx->queue;
++	struct adios_data *ad = q->elevator->elevator_data;
++	struct request *rq;
++	enum adios_data_dir data_dir;
++
++	spin_lock(&ad->lock);
++
++	if (!list_empty(&ad->fifo_list[ADIOS_READ]))
++		if (list_empty(&ad->fifo_list[ADIOS_WRITE]) || ad->starved++ >= ad->writes_starved)
++			goto read_dispatch;
++
++	if (!list_empty(&ad->fifo_list[ADIOS_WRITE])) {
++		data_dir = ADIOS_WRITE;
++		ad->starved = 0;
++		goto dispatch;
++	}
++
++read_dispatch:
++	if (!list_empty(&ad->fifo_list[ADIOS_READ])) {
++		data_dir = ADIOS_READ;
++		goto dispatch;
++	}
++
++	rq = NULL;
++	goto out;
++
++dispatch:
++	if (adios_check_fifo(ad, data_dir) || list_empty(&ad->fifo_list[!data_dir]))
++		rq = rq_entry_fifo(ad->fifo_list[data_dir].next);
++	else
++		rq = NULL;
++
++	if (rq)
++		adios_move_to_dispatch(ad, rq);
++
++out:
++	spin_unlock(&ad->lock);
++	return rq;
++}
++
++static void adios_insert_requests(struct blk_mq_hw_ctx *hctx,
++			       struct list_head *list,
++			       blk_insert_t flags)
++{
++	struct request_queue *q = hctx->queue;
++	struct adios_data *ad = q->elevator->elevator_data;
++
++	spin_lock(&ad->lock);
++	while (!list_empty(list)) {
++		struct request *rq = list_first_entry(list, struct request, queuelist);
++		list_del_init(&rq->queuelist);
++
++		rq->fifo_time = jiffies + ad->fifo_expire[rq_data_dir(rq)];
++		list_add_tail(&rq->queuelist, &ad->fifo_list[rq_data_dir(rq)]);
++		adios_add_rq_rb(ad, rq);
++	}
++	spin_unlock(&ad->lock);
++}
++
++static bool adios_has_work(struct blk_mq_hw_ctx *hctx)
++{
++	struct adios_data *ad = hctx->queue->elevator->elevator_data;
++
++	return !list_empty_careful(&ad->fifo_list[ADIOS_READ]) ||
++		!list_empty_careful(&ad->fifo_list[ADIOS_WRITE]);
++}
++
++static void adios_exit_sched(struct elevator_queue *e)
++{
++	struct adios_data *ad = e->elevator_data;
++	kfree(ad);
++}
++
++static int adios_init_sched(struct request_queue *q, struct elevator_type *e)
++{
++	struct adios_data *ad;
++	struct elevator_queue *eq;
++
++	eq = elevator_alloc(q, e);
++	if (!eq)
++		return -ENOMEM;
++
++	ad = kzalloc_node(sizeof(*ad), GFP_KERNEL, q->node);
++	if (!ad) {
++		kobject_put(&eq->kobj);
++		return -ENOMEM;
++	}
++	eq->elevator_data = ad;
++
++	INIT_LIST_HEAD(&ad->fifo_list[ADIOS_READ]);
++	INIT_LIST_HEAD(&ad->fifo_list[ADIOS_WRITE]);
++	ad->sort_list[ADIOS_READ] = RB_ROOT;
++	ad->sort_list[ADIOS_WRITE] = RB_ROOT;
++	ad->fifo_expire[ADIOS_READ] = adios_read_expire;
++	ad->fifo_expire[ADIOS_WRITE] = adios_write_expire;
++	ad->writes_starved = adios_writes_starved;
++	ad->front_merges = true;
++	ad->fifo_batch = adios_fifo_batch;
++	ad->last_dir = ADIOS_WRITE;
++	spin_lock_init(&ad->lock);
++
++	blk_queue_flag_set(QUEUE_FLAG_SQ_SCHED, q);
++	q->elevator = eq;
++	return 0;
++}
++
++static struct elevator_type mq_adios = {
++	.ops = {
++		.insert_requests	= adios_insert_requests,
++		.dispatch_request	= adios_dispatch_request,
++		.has_work		    = adios_has_work,
++		.exit_sched		    = adios_exit_sched,
++		.init_sched		    = adios_init_sched,
++	},
++	.elevator_name = "adios",
++	.elevator_owner = THIS_MODULE,
++};
++
++static int __init adios_init(void)
++{
++	return elv_register(&mq_adios);
++}
++
++static void __exit adios_exit(void)
++{
++	elv_unregister(&mq_adios);
++}
++
++module_init(adios_init);
++module_exit(adios_exit);
++
++MODULE_AUTHOR("Jens Axboe / E.S.H");
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Minimal ADIOS (Deadline) IO scheduler for debugging");
++// ==================== END: COPY AND PASTE THIS ENTIRE BLOCK INTO block/adios.c ====================
+\ No newline at end of file
