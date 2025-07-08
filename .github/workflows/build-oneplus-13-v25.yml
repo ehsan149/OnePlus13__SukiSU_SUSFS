@@ -398,7 +398,7 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone18.patch"
+             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone19.patch"
              if [ -f "$PATCH_FILE" ]; then
                 echo "Applying ADIOS patch..."
                 cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
