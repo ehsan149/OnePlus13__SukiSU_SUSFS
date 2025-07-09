@@ -398,7 +398,7 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone29.patch"
+             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone30.patch"
              if [ -f "$PATCH_FILE" ]; then
                 echo "Applying ADIOS patch..."
                 cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
@@ -506,7 +506,16 @@ jobs:
           echo "CONFIG_RAMOOPS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_RAMOOPS_DEFAULT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240" >> "${DEFCONFIG_PATH}"
-      
+
+          # Add ADIOS config if enabled
+          if [ "${{ inputs.enable_adios }}" = "true" ]; then
+            echo "# [EXPERIMENTAL] ADIOS I/O Scheduler Settings" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
+            echo "# Disable other MQ schedulers to ensure ADIOS is the true default" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_MQ_IOSCHED_DEADLINE=n" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_MQ_IOSCHED_KYBER=n" >> "${DEFCONFIG_PATH}"
+          fi
                       
           # Add Polly config 
            if true; then
