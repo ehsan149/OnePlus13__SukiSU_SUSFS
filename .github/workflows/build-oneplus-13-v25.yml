@@ -509,17 +509,21 @@ jobs:
 
           # Add ADIOS config if enabled
           if [ "${{ inputs.enable_adios }}" = "true" ]; then
-            echo "Forcefully setting ADIOS as the default I/O scheduler..."
-            # 1. Enable ADIOS and disable others
-            sed -i '/CONFIG_IOSCHED_ADIOS/d' "${DEFCONFIG_PATH}"
-            echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
+            echo "Setting ADIOS as default via Kconfig boolean..."
+            # 1. Enable ADIOS scheduler
+            sed -i '/CONFIG_MQ_IOSCHED_ADIOS/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_MQ_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
+            # 2. Use the Kconfig boolean to trigger the C code change
+            sed -i '/CONFIG_MQ_IOSCHED_DEFAULT_ADIOS/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_MQ_IOSCHED_DEFAULT_ADIOS=y" >> "${DEFCONFIG_PATH}"
+            # 3. Disable other schedulers
             sed -i '/CONFIG_MQ_IOSCHED_DEADLINE/d' "${DEFCONFIG_PATH}"
             echo "CONFIG_MQ_IOSCHED_DEADLINE=n" >> "${DEFCONFIG_PATH}"
             sed -i '/CONFIG_MQ_IOSCHED_KYBER/d' "${DEFCONFIG_PATH}"
             echo "CONFIG_MQ_IOSCHED_KYBER=n" >> "${DEFCONFIG_PATH}"
 
-            # 2. Forcefully set the default scheduler using sed
-            sed -i 's/CONFIG_DEFAULT_IOSCHED=.*/CONFIG_DEFAULT_IOSCHED="adios"/' "${DEFCONFIG_PATH}"
+            # 4. Clean up the old string config to avoid confusion
+            sed -i '/CONFIG_DEFAULT_IOSCHED/d' "${DEFCONFIG_PATH}"
             echo "ADIOS is now set as the default scheduler."
             
           fi
