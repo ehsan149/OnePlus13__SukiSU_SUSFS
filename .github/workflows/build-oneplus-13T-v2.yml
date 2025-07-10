@@ -391,8 +391,8 @@ jobs:
             # Using our final, fixed patch
             patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
             echo "Main le9uo patch (v5) applied."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
-            echo "workingset_protection enabled by default."
+            # patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
+            # echo "workingset_protection enabled by default."
           fi
 
           if ${{ inputs.enable_adios }}; then
