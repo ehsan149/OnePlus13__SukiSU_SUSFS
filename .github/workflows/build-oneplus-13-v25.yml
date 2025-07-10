@@ -398,7 +398,7 @@ jobs:
           fi
 
           if ${{ inputs.enable_adios }}; then
-             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone30.patch"
+             PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone31.patch"
              if [ -f "$PATCH_FILE" ]; then
                 echo "Applying ADIOS patch..."
                 cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
@@ -509,12 +509,19 @@ jobs:
 
           # Add ADIOS config if enabled
           if [ "${{ inputs.enable_adios }}" = "true" ]; then
-            echo "# [EXPERIMENTAL] ADIOS I/O Scheduler Settings" >> "${DEFCONFIG_PATH}"
+            echo "Forcefully setting ADIOS as the default I/O scheduler..."
+            # 1. Enable ADIOS and disable others
+            sed -i '/CONFIG_IOSCHED_ADIOS/d' "${DEFCONFIG_PATH}"
             echo "CONFIG_IOSCHED_ADIOS=y" >> "${DEFCONFIG_PATH}"
-            echo "CONFIG_DEFAULT_IOSCHED=\"adios\"" >> "${DEFCONFIG_PATH}"
-            echo "# Disable other MQ schedulers to ensure ADIOS is the true default" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_MQ_IOSCHED_DEADLINE/d' "${DEFCONFIG_PATH}"
             echo "CONFIG_MQ_IOSCHED_DEADLINE=n" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_MQ_IOSCHED_KYBER/d' "${DEFCONFIG_PATH}"
             echo "CONFIG_MQ_IOSCHED_KYBER=n" >> "${DEFCONFIG_PATH}"
+
+            # 2. Forcefully set the default scheduler using sed
+            sed -i 's/CONFIG_DEFAULT_IOSCHED=.*/CONFIG_DEFAULT_IOSCHED="adios"/' "${DEFCONFIG_PATH}"
+            echo "ADIOS is now set as the default scheduler."
+            
           fi
                       
           # Add Polly config 
