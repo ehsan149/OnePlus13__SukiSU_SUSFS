@@ -170,6 +170,7 @@ jobs:
           CUSTOM_TAG="${META#*/}"
           echo "Debug: SukiSU Branch Name: $BRANCH_NAME"
           echo "Debug: SukiSU Custom Tag: $CUSTOM_TAG"
+          echo "CUSTOM_TAG=$CUSTOM_TAG" >> $GITHUB_ENV
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
           cd ./KernelSU
           KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
@@ -656,7 +657,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           META="${{ github.event.inputs.KSU_META }}"
           CUSTOM_TAG="${META#*/}"
-          SUKISU_VERSION_INFO="${{ env.KSU_VERSION_FULL || format('v{0}-{1}', env.KSU_API_VERSION, CUSTOM_TAG) }}"
+          SUKISU_VERSION_INFO="${{ env.KSU_VERSION_FULL || format('v{0}-{1}', env.KSU_API_VERSION, env.CUSTOM_TAG) }}"
           
           FINAL_ZIP_NAME="SuKiSu_GKI_${SUKISU_VERSION_INFO}_${{ env.FEIL }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
