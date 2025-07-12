@@ -177,9 +177,12 @@ jobs:
             grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
           [[ -z "$KSU_API_VERSION" ]] && KSU_API_VERSION="3.1.7"
           echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
+          KSU_GIT_HASH=$(git rev-parse --short=8 HEAD)
+          echo "Debug: KernelSU Git Hash: $KSU_GIT_HASH"
 
-          KSU_VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME"
+          KSU_VERSION_FULL="v$KSU_API_VERSION-$KSU_GIT_HASH@$CUSTOM_TAG"
           echo "KSU_VERSION_FULL=$KSU_VERSION_FULL" >> $GITHUB_ENV
+          
           sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
           sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
           
