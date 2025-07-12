@@ -89,6 +89,16 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
+      - name: Create and Enable 3G Swap
+        if: ${{ inputs.RUNNER_TYPE != 'Self-Hosted' }}
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 3G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+          
       - name: Clean additional directories
         if: runner.hosted
         run: |
