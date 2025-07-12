@@ -657,9 +657,9 @@ jobs:
           cd $GITHUB_WORKSPACE
           META="${{ github.event.inputs.KSU_META }}"
           CUSTOM_TAG="${META#*/}"
-          SUKISU_VERSION_INFO="${{ env.KSU_VERSION_FULL || format('v{0}-{1}', env.KSU_API_VERSION, env.CUSTOM_TAG) }}"
+          SUKISU_VERSION_INFO="${{ env.KSU_API_VERSION }}_${{ env.KSUVER }}"
           
-          FINAL_ZIP_NAME="SuKiSu_GKI_${SUKISU_VERSION_INFO}_${{ env.FEIL }}"
+          FINAL_ZIP_NAME="OnePlus_13_SuKiSu_GKI_${SUKISU_VERSION_INFO}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
@@ -669,8 +669,12 @@ jobs:
           if ${{ inputs.enable_esim }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
           if ${{ inputs.enable_feature_x }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
-          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_${{ inputs.KERNEL_NAME }}.zip"
-          FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g')
+          
+          if [ -n "$CUSTOM_TAG" ]; then
+            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_${CUSTOM_TAG,,}"
+          fi  
+          FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g' | sed 's/\.zip$//i')
+          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}.zip"
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
           echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
@@ -686,12 +690,12 @@ jobs:
           fi
           
           cd AnyKernel3_Package
-          zip -r9 "../${FINAL_ZIP_NAME}" .
-          cd ..
+          zip -r9 "$GITHUB_WORKSPACE/${FINAL_ZIP_NAME}" .
+          cd "$GITHUB_WORKSPACE"
         env:
-          KSU_VERSION_FULL: ${{ env.KSU_VERSION_FULL }}
+          KSUVER: ${{ env.KSUVER }}
           KSU_API_VERSION: ${{ env.KSU_API_VERSION }}
-          KSUVER: ${{ env.KSUVER }} 
+          
           
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
