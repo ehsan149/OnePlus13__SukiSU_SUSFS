@@ -199,9 +199,10 @@ jobs:
           
           patch -p1 < --forward < 0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch || true
           cd ../common
-          
+
+          echo "INFO: Applying final patches to kernel source..."
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-          patch -p1 < scope_min_manual_hooks_v1.4.patch || true
+          patch -p1 --fuzz=3 < scope_min_manual_hooks_v1.4.patch || true
           echo "Finished setting up susfs for KernelSU Next."
 
       - name: Apply HMBird GKI patch
