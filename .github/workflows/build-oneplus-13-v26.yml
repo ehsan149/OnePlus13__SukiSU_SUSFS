@@ -165,12 +165,32 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          META="${{ github.event.inputs.KSU_META }}"
+          BRANCH_NAME="${META%%/*}"
+          CUSTOM_TAG="${META#*/}"
+          echo "Debug: SukiSU Branch Name: $BRANCH_NAME"
+          echo "Debug: SukiSU Custom Tag: $CUSTOM_TAG"
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
           cd ./KernelSU
-          KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
-          echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION_VALUE}/" kernel/Makefile
+          KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
+            grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+          [[ -z "$KSU_API_VERSION" ]] && KSU_API_VERSION="3.1.7"
+          echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
 
+          KSU_VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME"
+          echo "KSU_VERSION_FULL=$KSU_VERSION_FULL" >> $GITHUB_ENV
+          sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
+          sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
+          
+          echo "KSU_VERSION_API := $KSU_API_VERSION" >> kernel/Makefile
+          echo "KSU_VERSION_FULL := $KSU_VERSION_FULL" >> kernel/Makefile
+          KSUVER_CALCULATED=$(expr $(git rev-list --count main) + 10700)
+          echo "KSUVER=${KSUVER_CALCULATED}" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSUVER_CALCULATED}/" kernel/Makefile
+          echo "::group:: Final Makefile version info preview"
+          grep -A5 "KSU_VERSION_API" kernel/Makefile
+          echo "::endgroup::"
+          
       - name: Set up susfs
         run: |
           set -e
@@ -634,8 +654,11 @@ jobs:
         run: |
          set -e
           cd $GITHUB_WORKSPACE
+          META="${{ github.event.inputs.KSU_META }}"
+          CUSTOM_TAG="${META#*/}"
+          SUKISU_VERSION_INFO="${{ env.KSU_VERSION_FULL || format('v{0}-{1}', env.KSU_API_VERSION, CUSTOM_TAG) }}"
           
-          FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
+          FINAL_ZIP_NAME="SuKiSu_GKI_${SUKISU_VERSION_INFO}_${{ env.FEIL }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
@@ -645,8 +668,8 @@ jobs:
           if ${{ inputs.enable_esim }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
           if ${{ inputs.enable_feature_x }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
-          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip"
-          
+          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_${{ inputs.KERNEL_NAME }}.zip"
+          FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g')
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
           echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
@@ -665,8 +688,10 @@ jobs:
           zip -r9 "../${FINAL_ZIP_NAME}" .
           cd ..
         env:
-          KSUVER: ${{ env.KSUVER }}
-
+          KSU_VERSION_FULL: ${{ env.KSU_VERSION_FULL }}
+          KSU_API_VERSION: ${{ env.KSU_API_VERSION }}
+          KSUVER: ${{ env.KSUVER }} 
+          
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
