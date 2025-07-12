@@ -181,11 +181,11 @@ jobs:
           KSU_VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME"
           echo "KSU_VERSION_FULL=$KSU_VERSION_FULL" >> $GITHUB_ENV
           
+          sed -i "s|KSU_VERSION_FULL :=.*|KSU_VERSION_FULL := ${KSU_VERSION_FULL}|" kernel/Makefile
           sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
-          sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
           
           echo "KSU_VERSION_API := $KSU_API_VERSION" >> kernel/Makefile
-          echo "KSU_VERSION_FULL := $KSU_VERSION_FULL" >> kernel/Makefile
+          
           KSUVER_CALCULATED=$(expr $(git rev-list --count main) + 10700)
           echo "KSUVER=${KSUVER_CALCULATED}" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSUVER_CALCULATED}/" kernel/Makefile
