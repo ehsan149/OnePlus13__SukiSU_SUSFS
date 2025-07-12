@@ -571,7 +571,7 @@ jobs:
           echo "CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
           echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\""
           
-          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
+          sudo sed -i '2s/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -m "Update defconfig with all features and custom settings" --allow-empty || echo "No defconfig changes to commit."
 
