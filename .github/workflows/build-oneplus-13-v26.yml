@@ -677,7 +677,7 @@ jobs:
           FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g' | sed 's/\.zip$//i')
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}.zip"
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
-          echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "zip_artifact_name=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
           rm -rf ./AnyKernel3_Package/.git
           rm -rf ./AnyKernel3_Package/push.sh
@@ -691,8 +691,7 @@ jobs:
           fi
           
           cd AnyKernel3_Package
-          zip -r9 "$GITHUB_WORKSPACE/${FINAL_ZIP_NAME}" .
-          cd "$GITHUB_WORKSPACE"
+          
         env:
           KSUVER: ${{ env.KSUVER }}
           KSU_API_VERSION: ${{ env.KSU_API_VERSION }}
@@ -701,6 +700,6 @@ jobs:
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.prepare_zip.outputs.zip_filename }}
-          path: ${{ github.workspace }}/${{ steps.prepare_zip.outputs.zip_filename }}
+          name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
+           path: AnyKernel3_Package/
           
