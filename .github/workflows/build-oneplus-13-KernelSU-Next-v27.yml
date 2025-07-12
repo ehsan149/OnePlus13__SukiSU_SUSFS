@@ -113,7 +113,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache
+          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache jq
 
       - name: Restore ccache
         uses: actions/cache@v3
@@ -197,7 +197,7 @@ jobs:
           echo "INFO: Applying patches with error suppression (|| true)..."
           cd ./KernelSU-Next
           
-          patch -p1 < --forward < 0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch || true
+          patch -p1 --forward < 0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch || true
           cd ../common
 
           echo "INFO: Applying final patches to kernel source..."
@@ -443,6 +443,9 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >>  "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_KPROBES_HOOK=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "${DEFCONFIG_PATH}"
@@ -661,7 +664,30 @@ jobs:
         env:
           KSUVER: ${{ env.KSUVER }}
           
+      - name: Download and Add Pre-built SUSFS Module
+        run: |
+          echo "INFO: Downloading latest pre-built susfs module..."
+          LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
+            jq -r '.workflow_runs[] | select(.head_branch == "v1.5.2+") | .id' | head -n 1)
           
+          if [ -z "$LATEST_RUN_ID" ]; then
+            echo "WARN: No successful pre-built susfs module found. Skipping."
+          else
+            ARTIFACT_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$LATEST_RUN_ID/artifacts" | \
+              jq -r '.artifacts[0].archive_download_url')
+          
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo "INFO: Found artifact. Downloading..."
+              curl -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -o ksu_module_susfs.zip "$ARTIFACT_URL"
+             
+              cp ksu_module_susfs.zip ./AnyKernel3_Package/
+              echo "INFO: SUSFS module added to the package successfully."
+            else
+              echo "WARN: Failed to get artifact URL for susfs module."
+            fi
+          fi    
           
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
