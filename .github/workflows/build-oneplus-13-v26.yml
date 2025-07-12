@@ -462,6 +462,9 @@ jobs:
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
+          KSU_VERSION_FULL_VAL="${{ env.KSU_VERSION_FULL }}"
+          echo "CONFIG_KSU_VERSION_FULL=\"$KSU_VERSION_FULL_VAL\"" >> "${DEFCONFIG_PATH}"
+          echo "Debug: CONFIG_KSU_VERSION_FULL set to: $KSU_VERSION_FULL_VAL"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
