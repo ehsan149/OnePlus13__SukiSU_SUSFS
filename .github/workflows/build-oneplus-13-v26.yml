@@ -177,10 +177,8 @@ jobs:
             grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
           [[ -z "$KSU_API_VERSION" ]] && KSU_API_VERSION="3.1.7"
           echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
-          KSU_GIT_HASH=$(git rev-parse --short=8 HEAD)
-          echo "Debug: KernelSU Git Hash: $KSU_GIT_HASH"
-
-          KSU_VERSION_FULL="v$KSU_API_VERSION-$KSU_GIT_HASH@$CUSTOM_TAG"
+          
+          KSU_VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME"
           echo "KSU_VERSION_FULL=$KSU_VERSION_FULL" >> $GITHUB_ENV
           
           sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
@@ -462,9 +460,6 @@ jobs:
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
-          KSU_VERSION_FULL_VAL="${{ env.KSU_VERSION_FULL }}"
-          echo "CONFIG_KSU_VERSION_FULL=\"$KSU_VERSION_FULL_VAL\"" >> "${DEFCONFIG_PATH}"
-          echo "Debug: CONFIG_KSU_VERSION_FULL set to: $KSU_VERSION_FULL_VAL"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
