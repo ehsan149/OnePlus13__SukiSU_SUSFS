@@ -270,10 +270,11 @@ jobs:
               ;;
           esac
 
-          # Move any .rej files to a common directory for easy artifact upload
+          # NEW: Create debug directory and copy .rej files explicitly from current (KernelSU-Next) dir
           mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
-          find $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/ -name "*.rej" -exec mv {} $GITHUB_WORKSPACE/rej_files_for_debug/ \; || echo "No .rej files found to move or error during move."
-
+          echo "INFO: Copying any .rej files from current directory (${PWD}) to debug folder..."
+          cp -f *.rej $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || true # Copy any .rej files, ignore if none
+          
           # Go back to the 'common' directory within kernel_platform
           cd ../common 
           
@@ -287,8 +288,13 @@ jobs:
           fi
 
           # Your main SUSFS addition patch (e.g., 50_add_susfs_in_gki-android15-6.6.patch)
+          # This patch is from susfs4ksu/kernel_patches/
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
           
+          # NEW: Copy any .rej files from common directory to debug folder as well
+          echo "INFO: Copying any .rej files from common directory (${PWD}) to debug folder..."
+          cp -f *.rej $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || true # Copy any .rej files, ignore if none
+
           echo "Finished setting up susfs for KernelSU Next."
       
       - name: Upload Patch Rejects for Debugging
