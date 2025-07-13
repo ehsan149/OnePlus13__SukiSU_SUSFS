@@ -150,6 +150,10 @@ jobs:
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
           echo "Repo tool installed from mirror."
+          # Clone patch repositories for KernelSU and SUSFS integration
+          git clone https://github.com/WildKernels/kernel_patches.git ${{github.workspace}}/kernel_patches --depth=1
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git ${{github.workspace}}/susfs4ksu
+          
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
