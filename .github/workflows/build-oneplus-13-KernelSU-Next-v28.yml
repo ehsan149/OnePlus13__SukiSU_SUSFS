@@ -186,13 +186,13 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "INFO: Copying all patches..."
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-          cp ../kernel_patches_next/next/scope_min_manual_hooks_v1.4.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           SUSFS_FIX_PATH="../kernel_patches_next/next/susfs_fix_patches/v1.5.9"
           cp ${SUSFS_FIX_PATH}/fix_apk_sign.c.patch ./KernelSU-Next/
           cp ${SUSFS_FIX_PATH}/fix_core_hook.c.patch ./KernelSU-Next/
           cp ${SUSFS_FIX_PATH}/fix_ksud.c.patch ./KernelSU-Next/
+          cp ${SUSFS_FIX_PATH}/fix_rules.c.patch ./KernelSU-Next/
           cp ${SUSFS_FIX_PATH}/fix_selinux.c.patch ./KernelSU-Next/
           
           echo "Applying compatibility fix for susfs on Kernel 6.6..."
@@ -203,16 +203,15 @@ jobs:
           cd ./KernelSU-Next
           echo "INFO: Applying new fix patches to KernelSU-Next source..."
           cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-          patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true  
           patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
           patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
           patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+          patch -p1 --forward --fuzz=3 < fix_rules.c.patch
           patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
           cd ../common
 
           echo "INFO: Applying final patches to kernel source..."
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch
-          patch -p1 --fuzz=3 < scope_min_manual_hooks_v1.4.patch || true
           echo "Finished setting up susfs for KernelSU Next."
 
       - name: Apply HMBird GKI patch
