@@ -289,6 +289,16 @@ jobs:
           
           echo "Finished setting up susfs for KernelSU Next."
       
+      - name: Upload Patch Rejects for Debugging
+        if: failure() # Only upload if the previous step failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: susfs-patch-rejects
+          path: |
+            ${{ GITHUB_WORKSPACE }}/kernel_workspace/kernel_platform/KernelSU-Next/*.rej
+            ${{ GITHUB_WORKSPACE }}/kernel_workspace/kernel_platform/common/*.rej
+          retention-days: 5 # Keep for 5 days for debugging
+      
       - name: Apply HMBird GKI patch
         run: |
           set -e
