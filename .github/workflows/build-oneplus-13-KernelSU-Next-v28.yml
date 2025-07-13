@@ -179,7 +179,7 @@ jobs:
           git submodule update --init --recursive
 
           # Calculate KSU_VERSION
-          cd ./KernelSU-Next
+          cd ./KernelSU-Next/kernel
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) + 10200)
           sed -i "s/DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" Makefile
           cd .. 
@@ -189,40 +189,93 @@ jobs:
       - name: Set up susfs for KernelSU Next
         run: |
           set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace
-          git clone https://github.com/WildPlusKernel/kernel_patches.git kernel_patches_next --depth=1
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}" susfs4ksu --depth=1
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          echo "INFO: Copying all patches..."
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-          cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          SUSFS_FIX_PATH="../kernel_patches_next/next/susfs_fix_patches/v1.5.9"
-          cp ${SUSFS_FIX_PATH}/fix_apk_sign.c.patch ./KernelSU-Next/
-          cp ${SUSFS_FIX_PATH}/fix_core_hook.c.patch ./KernelSU-Next/
-          cp ${SUSFS_FIX_PATH}/fix_ksud.c.patch ./KernelSU-Next/
-          cp ${SUSFS_FIX_PATH}/fix_rules.c.patch ./KernelSU-Next/
-          cp ${SUSFS_FIX_PATH}/fix_selinux.c.patch ./KernelSU-Next/
+          SUSFS_BRANCH="gki-android15-6.6"
+          echo "Applying SUSFS patches using branch: $SUSFS_BRANCH..."
+          cd ${{github.workspace}}/susfs4ksu
+          if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
+            git checkout "$SUSFS_BRANCH"
+          else
+            echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu."
+            exit 1
+          fi
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
-          echo "Applying compatibility fix for susfs on Kernel 6.6..."
-          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' ./common/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch
-          sed -i '/#include <trace\/hooks\/fs.h>/d' ./common/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch
-         
-          
+          # Copy SUSFS base patches from the checked out branch
+          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
+          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+
           cd ./KernelSU-Next
-          echo "INFO: Applying new fix patches to KernelSU-Next source..."
-          cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-          patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-          patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-          patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-          patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-          patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-          cd ../common
+          echo "Applying next SUSFS patches to KernelSU-Next source..."
+          # Get SUSFS version from header file (ensure susfs.h is copied correctly above)
+          susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
+          echo "SUSVER=$susfs_version" >> $GITHUB_ENV
+          echo "SusFS Version: $susfs_version"
 
-          echo "INFO: Applying final patches to kernel source..."
-          patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch
+          # Apply main SUSFS enablement patch for KernelSU-Next based on reference workflow's logic
+          case "$susfs_version" in
+            "v1.5.5"|"v1.5.6"|"v1.5.7")
+              cp "../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
+              patch -p1 --forward < ./ksun_susfs_latest.patch || echo "WARN: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with issues. Check logs."
+              ;;
+            "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8 as per the reference action.yml
+              # Main enablement patch for these versions is handled via susfs4ksu's internal KernelSU patches
+              cp "../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ./
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || echo "WARN: 10_enable_susfs_for_ksu.patch failed or applied with issues. This is critical!"
+              
+              # Then apply individual fix patches from WildKernels/kernel_patches
+              SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version"
+              
+              FIX_PATCHES=(
+                "fix_apk_sign.c.patch"
+                "fix_core_hook.c.patch"
+                "fix_ksud.c.patch"
+                "fix_rules.c.patch"
+                "fix_selinux.c.patch"
+              )
+              
+              for patch_file in "${FIX_PATCHES[@]}"; do
+                if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
+                  cp "${SUSFS_FIX_PATH}/${patch_file}" ./
+                  patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
+                else
+                  echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
+                fi
+              done
+              ;;
+            *)
+              echo "ERROR: Invalid or unsupported SusFS version: $susfs_version. Aborting build."
+              exit 1
+              ;;
+          esac
+
+          cd ../common # Go back to common directory
+          
+          echo "INFO: Applying final SUSFS kernel source patches..."
+          # Specific include fix for android15-6.6
+          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
+              sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
+              echo "Added #include <trace/hooks/fs.h> to fs/namespace.c"
+          else
+              echo "Line '#include <trace/hooks/fs.h>' already present in fs/namespace.c. Skipping insert."
+          fi
+
+          # Your main SUSFS addition patch
+          patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
+          
+          # Apply ptrace patch (always skipped for Kernel 6.6)
+          KERNEL_VERSION_NUM=$(echo "${{ env.KERNEL_VERSION }}" | sed 's/\.//g')
+          MIN_VERSION_NUM=$(echo "5.16" | sed 's/\.//g')
+          
+          if [ "$KERNEL_VERSION_NUM" -lt "$MIN_VERSION_NUM" ]; then
+              echo "Patching ptrace for kernel version < 5.16!"
+              patch -p1 -F 3 < "$GITHUB_WORKSPACE/kernel_patches/gki_ptrace.patch" || echo "WARN: gki_ptrace.patch failed or applied with issues."
+          else
+              echo "Kernel ${{ env.KERNEL_VERSION }} >= 5.16, skipping ptrace patch."
+          fi
           echo "Finished setting up susfs for KernelSU Next."
-
+      
       - name: Apply HMBird GKI patch
         run: |
           set -e
