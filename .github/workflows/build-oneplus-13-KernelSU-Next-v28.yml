@@ -218,61 +218,49 @@ jobs:
           echo "SusFS Version: $susfs_version"
 
           # Apply main SUSFS enablement patch for KernelSU-Next based on reference workflow's logic
-          case "$susfs_version" in
-            "v1.5.5"|"v1.5.6"|"v1.5.7")
-              # Source path for this patch is relative to the KernelSU-Next directory, going up to the main kernel_patches clone
-              MAIN_KSUN_SUSFS_PATCH="../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch"
-              if [ -f "$MAIN_KSUN_SUSFS_PATCH" ]; then
-                cp "$MAIN_KSUN_SUSFS_PATCH" "./ksun_susfs_latest.patch"
-                patch -p1 --forward --fuzz=5 < ./ksun_susfs_latest.patch || { echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with critical issues. Aborting."; exit 1; }
-              else
-                echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 not found at $MAIN_KSUN_SUSFS_PATCH. Aborting."
-                exit 1
-              fi
-              ;;
-            "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8
-              # CRITICAL FIX HERE: Source 10_enable_susfs_for_ksu.patch from WildKernels/kernel_patches, NOT susfs4ksu
-              ENABLE_KSU_SUSFS_PATCH="../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch" # This is the actual path to the patch for v1.5.8/v1.5.9
+          # THIS IS THE CRITICAL FIX: Use the correct patch from WildKernels/kernel_patches
+          if [[ "$susfs_version" == "v1.5.8" || "$susfs_version" == "v1.5.9" ]]; then
+              ENABLE_KSU_SUSFS_PATCH="../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch" # Correct patch for v1.5.8/v1.5.9
               
               if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
-                cp "$ENABLE_KSU_SUSFS_PATCH" "./10_enable_susfs_for_ksu.patch" # Copy with its actual name
-                # Increased fuzz to 10 for critical patch
-                patch -p1 --forward --fuzz=10 < 10_enable_susfs_for_ksu.patch || { echo "ERROR: 10_enable_susfs_for_ksu.patch failed or applied with critical issues. This patch is essential. Aborting build."; exit 1; }
+                cp "$ENABLE_KSU_SUSFS_PATCH" "./ksun_susfs_main.patch" # Copy with a distinct name
+                # Apply patch with fuzz=10. This is the one that should now work or give precise rejects.
+                patch -p1 --forward --fuzz=10 < ksun_susfs_main.patch || { echo "ERROR: Main SusFS enablement patch failed to apply. This is critical! Aborting build."; exit 1; }
+                echo "INFO: Main SusFS enablement patch applied successfully."
               else
-                echo "ERROR: 10_enable_susfs_for_ksu.patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting build."
+                echo "ERROR: Main SusFS enablement patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting build."
                 exit 1
               fi
-              
-              echo "INFO: Listing contents of SUSFS_FIX_PATH: $SUSFS_FIX_PATH"
-              ls -l "${SUSFS_FIX_PATH}" || echo "WARN: Could not list SUSFS_FIX_PATH contents. Path may be invalid or empty."
-
-              # Apply individual fix patches from WildKernels/kernel_patches
-              SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # Path to WildKernels fix patches
-              
-              FIX_PATCHES=(
-                "fix_apk_sign.c.patch"
-                "fix_core_hook.c.patch"
-                "fix_ksud.c.patch"
-                "fix_rules.c.patch"
-                "fix_selinux.c.patch"
-              )
-              
-              for patch_file in "${FIX_PATCHES[@]}"; do
-                if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
-                  cp "${SUSFS_FIX_PATH}/${patch_file}" ./
-                  patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
-                else
-                  echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
-                fi
-              done
-              ;;
-            *)
-              echo "ERROR: Invalid or unsupported SusFS version: $susfs_version. Aborting build."
+          else
+              echo "ERROR: Invalid or unsupported SusFS version: $susfs_version. Only v1.5.8/v1.5.9 are explicitly handled for this kernel. Aborting build."
               exit 1
-              ;;
-          esac
+          fi
+              
+          echo "INFO: Listing contents of SUSFS_FIX_PATH: $SUSFS_FIX_PATH"
+          ls -l "${SUSFS_FIX_PATH}" || echo "WARN: Could not list SUSFS_FIX_PATH contents. Path may be invalid or empty."
+
+          # Apply individual fix patches from WildKernels/kernel_patches (these were already found/applied partially)
+          SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" 
+          
+          FIX_PATCHES=(
+            "fix_apk_sign.c.patch"
+            "fix_core_hook.c.patch"
+            "fix_ksud.c.patch"
+            "fix_rules.c.patch"
+            "fix_selinux.c.patch"
+          )
+          
+          for patch_file in "${FIX_PATCHES[@]}"; do
+            if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
+              cp "${SUSFS_FIX_PATH}/${patch_file}" ./ # Copy patch to current dir
+              patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
+            else
+              echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
+            fi
+          done
 
           # Create debug directory and copy ALL .rej files found in the ENTIRE workspace
+          # This should now create them if the *correct* patch fails.
           mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
           echo "INFO: Searching for and copying ALL .rej files in the entire workspace to debug folder..."
           find $GITHUB_WORKSPACE -name "*.rej" -print0 | xargs -0 -I {} cp "{}" $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || echo "No .rej files found to copy or error during copy."
