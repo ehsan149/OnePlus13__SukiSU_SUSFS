@@ -192,40 +192,60 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           SUSFS_BRANCH="gki-android15-6.6"
           echo "Applying SUSFS patches using branch: $SUSFS_BRANCH..."
+          # Checkout correct SUSFS branch in the globally cloned susfs4ksu repo
+          # This ensures we get the correct base SUSFS files and specific patches from it.
           cd ${{github.workspace}}/susfs4ksu
           if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
             git checkout "$SUSFS_BRANCH"
           else
-            echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu."
+            echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu. Please check the branch name."
             exit 1
           fi
+          # Go back to kernel_platform directory where the source code is
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
-          # Copy SUSFS base patches from the checked out branch
+          # Copy SUSFS base files and main addition patch from the checked out susfs4ksu branch
+          echo "INFO: Copying SUSFS base files and main addition patch..."
           cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
           cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
+          # Navigate into the KernelSU-Next directory to apply its specific SUSFS patches
           cd ./KernelSU-Next
           echo "Applying next SUSFS patches to KernelSU-Next source..."
-          # Get SUSFS version from header file (ensure susfs.h is copied correctly above)
+          # Get SUSFS version from header file (ensure susfs.h is copied correctly above in common)
           susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
           echo "SUSVER=$susfs_version" >> $GITHUB_ENV
           echo "SusFS Version: $susfs_version"
 
           # Apply main SUSFS enablement patch for KernelSU-Next based on reference workflow's logic
+          # The 10_enable_susfs_for_ksu.patch is usually located INSIDE susfs4ksu repo's KernelSU folder
           case "$susfs_version" in
             "v1.5.5"|"v1.5.6"|"v1.5.7")
-              cp "../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
-              patch -p1 --forward < ./ksun_susfs_latest.patch || echo "WARN: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with issues. Check logs."
+              MAIN_KSUN_SUSFS_PATCH="../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch"
+              if [ -f "$MAIN_KSUN_SUSFS_PATCH" ]; then
+                cp "$MAIN_KSUN_SUSFS_PATCH" "./ksun_susfs_latest.patch"
+                patch -p1 --forward --fuzz=3 < ./ksun_susfs_latest.patch || echo "WARN: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with issues."
+              else
+                echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 not found at $MAIN_KSUN_SUSFS_PATCH. Aborting."
+                exit 1
+              fi
               ;;
             "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8 as per the reference action.yml
               # Main enablement patch for these versions is handled via susfs4ksu's internal KernelSU patches
-              cp "../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || echo "WARN: 10_enable_susfs_for_ksu.patch failed or applied with issues. This is critical!"
+              ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" 
+              if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
+                cp "$ENABLE_KSU_SUSFS_PATCH" ./
+                # Increase fuzz to 5 to handle potential minor mismatches in core_hook.c, etc.
+                patch -p1 --forward --fuzz=5 < 10_enable_susfs_for_ksu.patch || { echo "ERROR: 10_enable_susfs_for_ksu.patch failed or applied with critical issues. This patch is essential. Aborting."; exit 1; }
+              else
+                echo "ERROR: 10_enable_susfs_for_ksu.patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting."
+                exit 1
+              fi
               
               # Then apply individual fix patches from WildKernels/kernel_patches
-              SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version"
+              # These are separate from the main enablement patch and may still be needed.
+              SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # Path to WildKernels fix patches
               
               FIX_PATCHES=(
                 "fix_apk_sign.c.patch"
@@ -240,7 +260,7 @@ jobs:
                   cp "${SUSFS_FIX_PATH}/${patch_file}" ./
                   patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
                 else
-                  echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
+                  echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping." # These WARNs are acceptable if the files genuinely don't exist
                 fi
               done
               ;;
@@ -250,10 +270,12 @@ jobs:
               ;;
           esac
 
-          cd ../common # Go back to common directory
+          # Go back to the 'common' directory within kernel_platform
+          cd ../common 
           
           echo "INFO: Applying final SUSFS kernel source patches..."
           # Specific include fix for android15-6.6
+          # This adds #include <trace/hooks/fs.h> to fs/namespace.c
           if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
               sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
               echo "Added #include <trace/hooks/fs.h> to fs/namespace.c"
@@ -261,9 +283,10 @@ jobs:
               echo "Line '#include <trace/hooks/fs.h>' already present in fs/namespace.c. Skipping insert."
           fi
 
-          # Your main SUSFS addition patch
+          # Your main SUSFS addition patch (e.g., 50_add_susfs_in_gki-android15-6.6.patch)
+          # This patch is from susfs4ksu/kernel_patches/
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
-                
+          
           echo "Finished setting up susfs for KernelSU Next."
       
       - name: Apply HMBird GKI patch
