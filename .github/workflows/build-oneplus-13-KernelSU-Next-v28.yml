@@ -218,56 +218,65 @@ jobs:
           echo "SusFS Version: $susfs_version"
 
           # Apply main SUSFS enablement patch for KernelSU-Next based on reference workflow's logic
-          # THIS IS THE CRITICAL FIX: Use the correct patch from WildKernels/kernel_patches
-          if [[ "$susfs_version" == "v1.5.8" || "$susfs_version" == "v1.5.9" ]]; then
-              ENABLE_KSU_SUSFS_PATCH="../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch" # Correct patch for v1.5.8/v1.5.9
-              
-              if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
-                cp "$ENABLE_KSU_SUSFS_PATCH" "./ksun_susfs_main.patch" # Copy with a distinct name
-                # Apply patch with fuzz=10. This is the one that should now work or give precise rejects.
-                patch -p1 --forward --fuzz=10 < ksun_susfs_main.patch || { echo "ERROR: Main SusFS enablement patch failed to apply. This is critical! Aborting build."; exit 1; }
-                echo "INFO: Main SusFS enablement patch applied successfully."
+          case "$susfs_version" in
+            "v1.5.5"|"v1.5.6"|"v1.5.7")
+              MAIN_KSUN_SUSFS_PATCH="../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch"
+              if [ -f "$MAIN_KSUN_SUSFS_PATCH" ]; then
+                cp "$MAIN_KSUN_SUSFS_PATCH" "./ksun_susfs_latest.patch"
+                patch -p1 --forward --fuzz=5 < ./ksun_susfs_latest.patch || { echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with critical issues. Aborting."; exit 1; }
               else
-                echo "ERROR: Main SusFS enablement patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting build."
+                echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 not found at $MAIN_KSUN_SUSFS_PATCH. Aborting."
                 exit 1
               fi
-          else
-              echo "ERROR: Invalid or unsupported SusFS version: $susfs_version. Only v1.5.8/v1.5.9 are explicitly handled for this kernel. Aborting build."
-              exit 1
-          fi
+              ;;
+            "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8 as per the reference action.yml
+              # Main enablement patch for these versions is handled via susfs4ksu's internal KernelSU patches
+              ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" # Correct path relative to KernelSU-Next
+              if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
+                cp "$ENABLE_KSU_SUSFS_PATCH" ./
+                # Increased fuzz to 10 for critical 10_enable_susfs_for_ksu.patch
+                patch -p1 --forward --fuzz=10 < 10_enable_susfs_for_ksu.patch || { echo "ERROR: 10_enable_susfs_for_ksu.patch failed or applied with critical issues. This patch is essential. Aborting build."; exit 1; }
+              else
+                echo "ERROR: 10_enable_susfs_for_ksu.patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting build."
+                exit 1
+              fi
               
-          echo "INFO: Listing contents of SUSFS_FIX_PATH: $SUSFS_FIX_PATH"
-          ls -l "${SUSFS_FIX_PATH}" || echo "WARN: Could not list SUSFS_FIX_PATH contents. Path may be invalid or empty."
+              echo "INFO: Listing contents of SUSFS_FIX_PATH: $SUSFS_FIX_PATH" # Added for debugging
+              ls -l "${SUSFS_FIX_PATH}" || echo "WARN: Could not list SUSFS_FIX_PATH contents. Path may be invalid or empty." # Added for debugging
 
-          # Apply individual fix patches from WildKernels/kernel_patches (these were already found/applied partially)
-          SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" 
-          
-          FIX_PATCHES=(
-            "fix_apk_sign.c.patch"
-            "fix_core_hook.c.patch"
-            "fix_ksud.c.patch"
-            "fix_rules.c.patch"
-            "fix_selinux.c.patch"
-          )
-          
-          for patch_file in "${FIX_PATCHES[@]}"; do
-            if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
-              cp "${SUSFS_FIX_PATH}/${patch_file}" ./ # Copy patch to current dir
-              patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
-            else
-              echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
-            fi
-          done
+              # Apply individual fix patches from WildKernels/kernel_patches
+              SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # Path to WildKernels fix patches
+              
+              FIX_PATCHES=(
+                "fix_apk_sign.c.patch"
+                "fix_core_hook.c.patch"
+                "fix_ksud.c.patch"
+                "fix_rules.c.patch"
+                "fix_selinux.c.patch"
+              )
+              
+              for patch_file in "${FIX_PATCHES[@]}"; do
+                if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
+                  cp "${SUSFS_FIX_PATH}/${patch_file}" ./
+                  patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
+                else
+                  echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
+                fi
+              done
+              ;;
+            *)
+              echo "ERROR: Invalid or unsupported SusFS version: $susfs_version. Aborting build."
+              exit 1
+              ;;
+          esac
 
-          # Create debug directory and copy ALL .rej files found in the ENTIRE workspace
-          # This should now create them if the *correct* patch fails.
+          # NEW: Create debug directory and copy .rej files explicitly from current (KernelSU-Next) dir
           mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
-          echo "INFO: Searching for and copying ALL .rej files in the entire workspace to debug folder..."
-          find $GITHUB_WORKSPACE -name "*.rej" -print0 | xargs -0 -I {} cp "{}" $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || echo "No .rej files found to copy or error during copy."
-          ls -l $GITHUB_WORKSPACE/rej_files_for_debug/ # List contents to confirm
-
+          echo "INFO: Copying any .rej files from current directory (${PWD}) to debug folder..."
+          cp -f *.rej $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || true # Copy any .rej files, ignore if none
+          
           # Go back to the 'common' directory within kernel_platform
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cd ../common 
           
           echo "INFO: Applying final SUSFS kernel source patches..."
           # Specific include fix for android15-6.6
@@ -282,6 +291,10 @@ jobs:
           # This patch is from susfs4ksu/kernel_patches/
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
           
+          # NEW: Copy any .rej files from common directory to debug folder as well
+          echo "INFO: Copying any .rej files from common directory (${PWD}) to debug folder..."
+          cp -f *.rej $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || true # Copy any .rej files, ignore if none
+
           echo "Finished setting up susfs for KernelSU Next."
       
       - name: Upload Patch Rejects for Debugging
