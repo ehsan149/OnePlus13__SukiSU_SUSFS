@@ -174,11 +174,16 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          echo "Adding KernelSU Next..."
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          git submodule update --init --recursive
+
+          # Calculate KSU_VERSION
           cd ./KernelSU-Next
-          KSU_VERSION=$(git rev-list --count HEAD)
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) + 10200)
+          sed -i "s/DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" Makefile
+          cd .. 
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/define KSU_VERSION .*/define KSU_VERSION ${KSU_VERSION}/" kernel/ksu.h
           echo "KernelSU Next version set to ${KSU_VERSION}"
    
       - name: Set up susfs for KernelSU Next
