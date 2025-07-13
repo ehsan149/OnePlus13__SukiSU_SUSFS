@@ -263,17 +263,7 @@ jobs:
 
           # Your main SUSFS addition patch
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
-          
-          # Apply ptrace patch (always skipped for Kernel 6.6)
-          KERNEL_VERSION_NUM=$(echo "${{ env.KERNEL_VERSION }}" | sed 's/\.//g')
-          MIN_VERSION_NUM=$(echo "5.16" | sed 's/\.//g')
-          
-          if [ "$KERNEL_VERSION_NUM" -lt "$MIN_VERSION_NUM" ]; then
-              echo "Patching ptrace for kernel version < 5.16!"
-              patch -p1 -F 3 < "$GITHUB_WORKSPACE/kernel_patches/gki_ptrace.patch" || echo "WARN: gki_ptrace.patch failed or applied with issues."
-          else
-              echo "Kernel ${{ env.KERNEL_VERSION }} >= 5.16, skipping ptrace patch."
-          fi
+                
           echo "Finished setting up susfs for KernelSU Next."
       
       - name: Apply HMBird GKI patch
