@@ -241,8 +241,8 @@ jobs:
                 exit 1
               fi
               
-              echo "INFO: Listing contents of SUSFS_FIX_PATH: $SUSFS_FIX_PATH" # Added for debugging
-              ls -l "${SUSFS_FIX_PATH}" || echo "WARN: Could not list SUSFS_FIX_PATH contents. Path may be invalid or empty." # Added for debugging
+              echo "INFO: Listing contents of SUSFS_FIX_PATH: $SUSFS_FIX_PATH"
+              ls -l "${SUSFS_FIX_PATH}" || echo "WARN: Could not list SUSFS_FIX_PATH contents. Path may be invalid or empty."
 
               # Apply individual fix patches from WildKernels/kernel_patches
               SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # Path to WildKernels fix patches
@@ -270,13 +270,17 @@ jobs:
               ;;
           esac
 
-          # NEW: Create debug directory and copy .rej files explicitly from current (KernelSU-Next) dir
+          # NEW & CRUCIAL: Create debug directory and copy ALL .rej files found in the ENTIRE workspace
           mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
-          echo "INFO: Copying any .rej files from current directory (${PWD}) to debug folder..."
-          cp -f *.rej $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || true # Copy any .rej files, ignore if none
-          
+          echo "INFO: Searching for and copying ALL .rej files in the entire workspace to debug folder..."
+          find $GITHUB_WORKSPACE -name "*.rej" -print0 | xargs -0 -I {} cp "{}" $GITHUB_WORKSPACE/rej_files_for_debug/ || echo "No .rej files found to copy or error during copy."
+          ls -l $GITHUB_WORKSPACE/rej_files_for_debug/ # List contents to confirm
+
+
           # Go back to the 'common' directory within kernel_platform
-          cd ../common 
+          # IMPORTANT: this 'cd' might not be correct if previous steps exited.
+          # It's better to use an absolute path for consistency if we move to common next.
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           
           echo "INFO: Applying final SUSFS kernel source patches..."
           # Specific include fix for android15-6.6
@@ -288,13 +292,8 @@ jobs:
           fi
 
           # Your main SUSFS addition patch (e.g., 50_add_susfs_in_gki-android15-6.6.patch)
-          # This patch is from susfs4ksu/kernel_patches/
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
           
-          # NEW: Copy any .rej files from common directory to debug folder as well
-          echo "INFO: Copying any .rej files from common directory (${PWD}) to debug folder..."
-          cp -f *.rej $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || true # Copy any .rej files, ignore if none
-
           echo "Finished setting up susfs for KernelSU Next."
       
       - name: Upload Patch Rejects for Debugging
