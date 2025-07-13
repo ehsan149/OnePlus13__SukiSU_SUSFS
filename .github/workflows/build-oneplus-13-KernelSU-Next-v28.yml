@@ -209,35 +209,35 @@ jobs:
           cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
-          # Define the base directory for KernelSU-Next patching
-          KERNELSU_NEXT_DIR="./KernelSU-Next"
-          
+          # Navigate into the KernelSU-Next directory to apply its specific SUSFS patches
+          cd ./KernelSU-Next
           echo "Applying next SUSFS patches to KernelSU-Next source..."
           # Get SUSFS version from header file (ensure susfs.h is copied correctly above in common)
-          susfs_version=$(grep '#define SUSFS_VERSION' ./common/include/linux/susfs.h | awk -F'"' '{print $2}') # Path to common is now relative to kernel_platform
+          susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
           echo "SUSVER=$susfs_version" >> $GITHUB_ENV
           echo "SusFS Version: $susfs_version"
 
           # Apply main SUSFS enablement patch for KernelSU-Next based on reference workflow's logic
           case "$susfs_version" in
             "v1.5.5"|"v1.5.6"|"v1.5.7")
-              MAIN_KSUN_SUSFS_PATCH="../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch"
+              # Source path for this patch is relative to the KernelSU-Next directory, going up to the main kernel_patches clone
+              MAIN_KSUN_SUSFS_PATCH="../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch"
               if [ -f "$MAIN_KSUN_SUSFS_PATCH" ]; then
-                # Apply patch from KernelSU-Next base dir
-                patch -d "$KERNELSU_NEXT_DIR" -p1 --forward --fuzz=5 < "$MAIN_KSUN_SUSFS_PATCH" || { echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with critical issues. Aborting."; exit 1; }
+                cp "$MAIN_KSUN_SUSFS_PATCH" "./ksun_susfs_latest.patch"
+                patch -p1 --forward --fuzz=5 < ./ksun_susfs_latest.patch || { echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with critical issues. Aborting."; exit 1; }
               else
                 echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 not found at $MAIN_KSUN_SUSFS_PATCH. Aborting."
                 exit 1
               fi
               ;;
-            "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8 as per the reference action.yml
-              # Main enablement patch for these versions is handled via susfs4ksu's internal KernelSU patches
-              ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" # Path to patch file
-
+            "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8
+              # CRITICAL FIX HERE: Source 10_enable_susfs_for_ksu.patch from WildKernels/kernel_patches, NOT susfs4ksu
+              ENABLE_KSU_SUSFS_PATCH="../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch" # This is the actual path to the patch for v1.5.8/v1.5.9
+              
               if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
-                # Try applying from the KernelSU-Next base directory with fuzz=10
-                echo "INFO: Attempting to apply 10_enable_susfs_for_ksu.patch with fuzz=10 from base directory..."
-                patch -d "$KERNELSU_NEXT_DIR" -p1 --forward --fuzz=10 < "$ENABLE_KSU_SUSFS_PATCH" || { echo "ERROR: 10_enable_susfs_for_ksu.patch failed or applied with critical issues. This patch is essential. Aborting build."; exit 1; }
+                cp "$ENABLE_KSU_SUSFS_PATCH" "./10_enable_susfs_for_ksu.patch" # Copy with its actual name
+                # Increased fuzz to 10 for critical patch
+                patch -p1 --forward --fuzz=10 < 10_enable_susfs_for_ksu.patch || { echo "ERROR: 10_enable_susfs_for_ksu.patch failed or applied with critical issues. This patch is essential. Aborting build."; exit 1; }
               else
                 echo "ERROR: 10_enable_susfs_for_ksu.patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting build."
                 exit 1
@@ -259,8 +259,8 @@ jobs:
               
               for patch_file in "${FIX_PATCHES[@]}"; do
                 if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
-                  # Apply fix patches from KernelSU-Next base dir
-                  patch -d "$KERNELSU_NEXT_DIR" -p1 --forward --fuzz=3 < "${SUSFS_FIX_PATH}/${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
+                  cp "${SUSFS_FIX_PATH}/${patch_file}" ./
+                  patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
                 else
                   echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
                 fi
@@ -272,8 +272,7 @@ jobs:
               ;;
           esac
 
-          # NEW & CRUCIAL: Create debug directory and copy ALL .rej files found in the ENTIRE workspace
-          # This will capture any .rej files no matter where 'patch' decided to put them.
+          # Create debug directory and copy ALL .rej files found in the ENTIRE workspace
           mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
           echo "INFO: Searching for and copying ALL .rej files in the entire workspace to debug folder..."
           find $GITHUB_WORKSPACE -name "*.rej" -print0 | xargs -0 -I {} cp "{}" $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || echo "No .rej files found to copy or error during copy."
@@ -292,6 +291,7 @@ jobs:
           fi
 
           # Your main SUSFS addition patch (e.g., 50_add_susfs_in_gki-android15-6.6.patch)
+          # This patch is from susfs4ksu/kernel_patches/
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
           
           echo "Finished setting up susfs for KernelSU Next."
