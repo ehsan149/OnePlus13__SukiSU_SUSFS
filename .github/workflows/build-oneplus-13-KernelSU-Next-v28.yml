@@ -175,8 +175,11 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          git submodule update --init --recursive
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || { #
+            echo "::error::Failed to clone or set up KernelSU-Next"
+            exit 1
+          }
+          # git submodule update --init --recursive
 
           # Calculate KSU_VERSION
           cd ./KernelSU-Next/kernel
@@ -197,13 +200,13 @@ jobs:
           if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
             git checkout "$SUSFS_BRANCH"
           else
-            echo "ERROR: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu. Please check the branch name."
+            echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu. Please check the branch name."
             exit 1
           fi
           # Go back to kernel_platform directory where the source code is
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
-          # Copy SUSFS base files from the checked out susfs4ksu branch (Repo B)
+          # Copy SUSFS base files from the checked out susfs4ksu branch
           echo "INFO: Copying SUSFS base files from simonpunk/susfs4ksu..."
           cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
           cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
@@ -217,26 +220,49 @@ jobs:
           echo "SUSVER=$susfs_version" >> $GITHUB_ENV
           echo "SusFS Version: $susfs_version"
 
-          # --- CRITICAL FIX HERE: Apply the correct 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu (Repo B) ---
-          ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" # Correct path to the 6-days-old patch
-
+          # --- Apply the correct 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu (Repo B) ---
+          # This patch is directly from susfs4ksu/kernel_patches/KernelSU/ as in the new reference workflow.
+          ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+          
           if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
-            cp "$ENABLE_KSU_SUSFS_PATCH" "./10_enable_susfs_for_ksu.patch" # Copy to current dir for patching
+            cp "$ENABLE_KSU_SUSFS_PATCH" ./ # Copy to current dir for patching
             echo "INFO: Attempting to apply 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu (6 days old)."
-            # Apply with fuzz=5. This should be compatible now, given its recent update.
-            patch -p1 --forward --fuzz=5 < 10_enable_susfs_for_ksu.patch || { echo "ERROR: 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu FAILED to apply. This is critical! Aborting build."; exit 1; }
+            # Using fuzz=5 as per the reference, since this is the correct, newer patch.
+            patch -p1 --forward --fuzz=5 < 10_enable_susfs_for_ksu.patch || { 
+                echo "ERROR::10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu FAILED to apply. This is critical! Aborting build."; 
+                exit 1; 
+            }
             echo "INFO: 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu applied successfully."
           else
-            echo "ERROR: 10_enable_susfs_for_ksu.patch NOT FOUND at $ENABLE_KSU_SUSFS_PATCH in simonpunk/susfs4ksu. This patch is essential for Kernel 6.6. Aborting build."
+            echo "ERROR::10_enable_susfs_for_ksu.patch NOT FOUND at $ENABLE_KSU_SUSFS_PATCH in simonpunk/susfs4ksu. This patch is essential for Kernel 6.6. Aborting build."
             exit 1
           fi
           
-          # --- REMOVED individual fix_*.c.patch files ---
-          # These were from WildKernels/kernel_patches and might be redundant or conflicting with the new, comprehensive 10_enable_susfs_for_ksu.patch.
-          echo "INFO: Skipping individual fix_*.c.patch files as they are likely redundant with the new 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu."
+          # --- Re-introducing individual fix_*.c.patch files as seen in farrukh2002/kernel-builder ---
+          # This workflow explicitly applies these patches, suggesting they are still needed.
+          SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # From WildKernels/kernel_patches
+          
+          FIX_PATCHES=(
+            "fix_apk_sign.c.patch"
+            "fix_core_hook.c.patch"
+            "fix_ksud.c.patch"
+            # The reference workflow doesn't explicitly list fix_rules.c.patch or fix_selinux.c.patch in this section.
+            # If your previous build showed these failing, you might need them.
+            # For now, let's stick to what the reference shows for minimal conflict.
+            # "fix_rules.c.patch"
+            # "fix_selinux.c.patch"
+          )
+          
+          for patch_file in "${FIX_PATCHES[@]}"; do
+            if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
+              cp "${SUSFS_FIX_PATH}/${patch_file}" ./ # Copy patch to current dir
+              patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
+            else
+              echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
+            fi
+          done
 
           # Create debug directory and copy ALL .rej files found in the ENTIRE workspace
-          # This is still important in case the new patch also has issues.
           mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
           echo "INFO: Searching for and copying ALL .rej files in the entire workspace to debug folder..."
           find $GITHUB_WORKSPACE -name "*.rej" -print0 | xargs -0 -I {} cp "{}" $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || echo "No .rej files found to copy or error during copy."
@@ -259,6 +285,24 @@ jobs:
           
           echo "Finished setting up susfs for KernelSU Next."
       
+      - name: Apply Manual Hooks Patch 
+        run: |
+          set -e
+          # Navigate to the common directory where KernelSU-Next and source files reside
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common 
+          
+          echo "Applying scope_min_manual_hooks_v1.4.patch..."
+          # Source for this patch is from WildKernels/kernel_patches
+          MANUAL_HOOKS_PATCH="$GITHUB_WORKSPACE/kernel_patches/next/scope_min_manual_hooks_v1.4.patch"
+
+          if [ -f "$MANUAL_HOOKS_PATCH" ]; then
+            cp "$MANUAL_HOOKS_PATCH" ./ # Copy patch to common directory
+            patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch || echo "WARN: scope_min_manual_hooks_v1.4.patch failed or applied with issues."
+            echo "INFO: scope_min_manual_hooks_v1.4.patch applied."
+          else
+            echo "WARN: scope_min_manual_hooks_v1.4.patch not found at $MANUAL_HOOKS_PATCH, skipping."
+          fi
+          
       - name: Upload Patch Rejects for Debugging
         if: always() # Use always() to ensure it runs even if previous steps fail
         uses: actions/upload-artifact@v4
