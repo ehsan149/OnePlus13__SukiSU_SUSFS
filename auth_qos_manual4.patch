@@ -1,0 +1,2260 @@
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index efb66e25f..2c11c1d07 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -243,4 +243,6 @@ source "drivers/hte/Kconfig"
+ 
+ source "drivers/cdx/Kconfig"
+ 
++source "drivers/auth_ctl/Kconfig"
++
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 1bec7819a..a38383ecf 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -199,3 +199,5 @@ obj-$(CONFIG_DRM_ACCEL)		+= accel/
+ obj-$(CONFIG_CDX_BUS)		+= cdx/
+ 
+ obj-$(CONFIG_S390)		+= s390/
++
++obj-$(CONFIG_AUTHORITY_CTRL)		+= auth_ctl/
+diff --git a/drivers/auth_ctl/Kconfig b/drivers/auth_ctl/Kconfig
+new file mode 100644
+index 000000000..9762fe634
+--- /dev/null
++++ b/drivers/auth_ctl/Kconfig
+@@ -0,0 +1,55 @@
++# SPDX-License-Identifier: GPL-2.0
++config AUTHORITY_CTRL
++	tristate "Authority Control for RTG & QOS"
++	default y
++	help
++	  Control thread's authority for specific kenrel feature such as RTG
++	  or QOS. Use uid as the authentication granularity. Status switching
++	  will change uid's authority, and would trigger additional actions
++	  registered by specific kernel feature.
++
++config QOS_CTRL
++	bool "Multiple Level Qos Control for thread"
++	default y
++	depends on AUTHORITY_CTRL
++	help
++	  If set, thread can apply qos for less execution latency and get more
++	  cpu supply. Permission and absolute supply aggressiveness was controlled
++	  by AUTHORITY_CTRL.
++
++config RTG_AUTHORITY
++	bool "Authority Control for SCHED_RTG_FRAME"
++	default n
++	depends on AUTHORITY_CTRL
++	depends on SCHED_RTG_FRAME
++	help
++	  Authority control for SCHED_RTG_FRAME. If set, access to SCHED_RTG_FRAME's
++	  ioctl cmd will be restricted.
++
++config QOS_AUTHORITY
++	bool "Authority Control for QOS_CTRL"
++	default y
++	depends on AUTHORITY_CTRL
++	depends on QOS_CTRL
++	help
++	  Authority control for QOS_CTRL. If set, access to QOS_CTRL's ioctl cmd will
++	  be restricted.
++
++config AUTH_QOS_DEBUG
++	bool "Debug fs for qos_ctrl and auth_ctrl"
++	default n
++	depends on AUTHORITY_CTRL
++	depends on RTG_AUTHORITY
++	depends on QOS_AUTHORITY
++	help
++	  If set, debug node will show auth and qos info
++
++config QOS_POLICY_MAX_NR
++	int "Number of supported qos policy"
++	range 5 20
++	default 5
++	depends on QOS_CTRL
++	help
++	  Qos policy number limit. Truly initialized qos policy could small then
++	  this value.
++
+diff --git a/drivers/auth_ctl/Makefile b/drivers/auth_ctl/Makefile
+new file mode 100644
+index 000000000..548ec4535
+--- /dev/null
++++ b/drivers/auth_ctl/Makefile
+@@ -0,0 +1,5 @@
++# SPDX-License-Identifier: GPL-2.0-only
++obj-$(CONFIG_AUTHORITY_CTRL)		+= auth_qos_ctrl.o
++auth_qos_ctrl-$(CONFIG_AUTHORITY_CTRL)	+= auth_ctrl.o
++auth_qos_ctrl-$(CONFIG_QOS_CTRL)	+= qos_ctrl.o
++auth_qos_ctrl-$(CONFIG_AUTH_QOS_DEBUG)	+= auth_qos_debug.o
+diff --git a/drivers/auth_ctl/auth_ctrl.c b/drivers/auth_ctl/auth_ctrl.c
+new file mode 100644
+index 000000000..549a6c8bc
+--- /dev/null
++++ b/drivers/auth_ctl/auth_ctrl.c
+@@ -0,0 +1,662 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * drivers/auth_ctl/auth_ctrl.c
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ *
++ */
++
++#include <linux/cred.h>
++#include <linux/mutex.h>
++#include <linux/errno.h>
++#include <linux/fs.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/sched.h>
++#include <linux/kernel.h>
++#include <linux/slab.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++#include <linux/sched/auth_ctrl.h>
++#include <linux/sched/rtg_auth.h>
++#include <linux/sched/qos_ctrl.h>
++#include <linux/sched/qos_auth.h>
++
++#include <linux/sched/cputime.h>
++#include "auth_ctrl.h"
++#ifdef CONFIG_QOS_CTRL
++#include "qos_ctrl.h"
++#endif
++
++typedef long (*auth_ctrl_func)(int abi, void __user *arg);
++
++static long ctrl_auth_basic_operation(int abi, void __user *uarg);
++
++static auth_ctrl_func g_func_array[AUTH_CTRL_MAX_NR] = {
++	NULL, /* reserved */
++	ctrl_auth_basic_operation,
++};
++
++/*
++ * uid-based authority idr table
++ */
++static struct idr *ua_idr;
++
++struct idr *get_auth_ctrl_idr(void)
++{
++	return ua_idr;
++}
++
++static DEFINE_MUTEX(ua_idr_mutex);
++
++struct mutex *get_auth_idr_mutex(void)
++{
++	return &ua_idr_mutex;
++}
++
++/*
++ * change auth's status to SYSTEM and enable all feature access
++ */
++static void change_to_super(struct auth_struct *auth)
++{
++#ifdef CONFIG_RTG_AUTHORITY
++	auth->rtg_auth_flag = AF_RTG_ALL;
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	auth->qos_auth_flag = AF_QOS_ALL;
++#endif
++	auth->status = AUTH_STATUS_SYSTEM_SERVER;
++}
++
++static void init_authority_record(struct auth_struct *auth)
++{
++#ifdef CONFIG_QOS_AUTHORITY
++	int i;
++#endif
++
++#ifdef CONFIG_RTG_AUTHORITY
++	auth->rtg_auth_flag = 0;
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	auth->qos_auth_flag = 0;
++#endif
++	auth->status = AUTH_STATUS_DISABLED;
++	mutex_init(&auth->mutex);
++	refcount_set(&auth->usage, 1);
++#ifdef CONFIG_QOS_CTRL
++	for (i = QOS_POLICY_MIN_LEVEL; i < NR_QOS; ++i) {
++		INIT_LIST_HEAD(&auth->tasks[i]);
++		auth->num[i] = 0;
++	}
++#endif
++}
++
++void get_auth_struct(struct auth_struct *auth)
++{
++	refcount_inc(&auth->usage);
++}
++
++static void __put_auth_struct(struct auth_struct *auth)
++
++{
++	WARN_ON(auth->status != AUTH_STATUS_DEAD);
++	WARN_ON(refcount_read(&auth->usage));
++
++#ifdef CONFIG_QOS_CTRL
++	/* refcount is zero here, no contend, no lock. */
++	remove_qos_tasks(auth);
++#endif
++	kfree(auth);
++}
++
++void put_auth_struct(struct auth_struct *auth)
++{
++	if (refcount_dec_and_test(&auth->usage))
++		__put_auth_struct(auth);
++}
++
++static int init_ua_idr(void)
++{
++	ua_idr = kzalloc(sizeof(*ua_idr), GFP_ATOMIC);
++	if (ua_idr == NULL) {
++		pr_err("[AUTH_CTRL] auth idr init failed, no memory!\n");
++		return -ENOMEM;
++	}
++
++	idr_init(ua_idr);
++	
++	return 0;
++}
++
++static int init_super_authority(unsigned int auth_tgid)
++{
++	int ret;
++	struct auth_struct *auth_super;
++
++	auth_super = kzalloc(sizeof(*auth_super), GFP_ATOMIC);
++	if(auth_super == NULL) {
++		pr_err("[AUTH_CTRL] auth struct alloc failed\n");
++		return -ENOMEM;
++	}
++	init_authority_record(auth_super);
++	change_to_super(auth_super);
++
++	ret = idr_alloc(ua_idr, auth_super, auth_tgid, auth_tgid + 1, GFP_ATOMIC);
++	if(ret != auth_tgid) {
++		pr_err("[AUTH_CTRL] authority for super init failed! ret=%d\n", ret);
++		kfree(auth_super);
++		return ret;
++	}
++
++	return 0;
++}
++
++int authority_remove_handler(int id, void *p, void *para)
++{
++	struct auth_struct *auth = (struct auth_struct *)p;
++
++	mutex_lock(&auth->mutex);
++#ifdef CONFIG_QOS_CTRL
++	qos_switch(auth, AUTH_STATUS_DISABLED);
++#endif
++	auth->status = AUTH_STATUS_DEAD;
++	mutex_unlock(&auth->mutex);
++	put_auth_struct(auth);
++
++	return 0;
++}
++
++void remove_authority_control(void)
++{
++	int ret;
++
++	mutex_lock(&ua_idr_mutex);
++	ret = idr_for_each(ua_idr, authority_remove_handler, NULL);
++	if (ret < 0)
++		pr_err("[AUTH_CTRL] authority item remove failed\n");
++
++	idr_destroy(ua_idr);
++	kfree(ua_idr);
++
++	mutex_unlock(&ua_idr_mutex);
++}
++
++/*
++ * constrain user assigned auth_flag to kernel accepted auth_flag
++ */
++static int generic_auth_trim(unsigned int orig_flag, unsigned int constrain)
++{
++	return orig_flag & constrain;
++}
++
++static inline void set_auth_flag(struct auth_ctrl_data *data, struct auth_struct *auth_to_enable)
++{
++#ifdef CONFIG_RTG_AUTHORITY
++	auth_to_enable->rtg_auth_flag = generic_auth_trim(data->rtg_ua_flag, AF_RTG_DELEGATED);
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	auth_to_enable->qos_auth_flag = generic_auth_trim(data->qos_ua_flag, AF_QOS_ALL);
++#endif
++}
++
++static int auth_enable(struct auth_ctrl_data *data)
++{
++	struct auth_struct *auth_to_enable;
++	unsigned int tgid = data->pid;
++	int status = data->status;
++	int ret;
++
++	mutex_lock(&ua_idr_mutex);
++	auth_to_enable = idr_find(ua_idr, tgid);
++	/* auth exist, just resume the task's qos request */
++	if (auth_to_enable) {
++		get_auth_struct(auth_to_enable);
++		mutex_unlock(&ua_idr_mutex);
++
++		mutex_lock(&auth_to_enable->mutex);
++		if (auth_to_enable->status == AUTH_STATUS_DEAD) {
++			mutex_unlock(&auth_to_enable->mutex);
++			put_auth_struct(auth_to_enable);
++			return -INVALID_AUTH;
++		}
++
++		set_auth_flag(data, auth_to_enable);
++#ifdef CONFIG_QOS_CTRL
++		qos_switch(auth_to_enable, status);
++#endif
++		auth_to_enable->status = status;
++		mutex_unlock(&auth_to_enable->mutex);
++		ret = 0;
++		put_auth_struct(auth_to_enable);
++		goto out;
++	}
++
++	/* auth not exist, build a new auth, then insert to idr */
++	auth_to_enable = kzalloc(sizeof(*auth_to_enable), GFP_ATOMIC);
++	if (!auth_to_enable) {
++		mutex_unlock(&ua_idr_mutex);
++		pr_err("[AUTH_CTRL] alloc auth data failed, no memory!\n");
++		ret = -ENOMEM;
++		goto out;
++	}
++
++	init_authority_record(auth_to_enable);
++
++	/* no one could get the auth from idr now, no need to lock */
++	set_auth_flag(data, auth_to_enable);
++	auth_to_enable->status = status;
++
++	ret = idr_alloc(ua_idr, auth_to_enable, tgid, tgid + 1, GFP_ATOMIC);
++	if (ret < 0) {
++		pr_err("[AUTH_CTRL] add auth to idr failed, no memory!\n");
++		kfree(auth_to_enable);
++	}
++
++	mutex_unlock(&ua_idr_mutex);
++
++out:
++	return ret;
++}
++
++static int auth_delete(struct auth_ctrl_data *data)
++{
++	struct auth_struct *auth_to_delete;
++	unsigned int tgid = data->pid;
++
++	mutex_lock(&ua_idr_mutex);
++	auth_to_delete = (struct auth_struct *)idr_remove(ua_idr, tgid);
++	if (!auth_to_delete) {
++		mutex_unlock(&ua_idr_mutex);
++		pr_err("[AUTH_CTRL] no auth data for this pid=%d, delete failed\n", tgid);
++		return -PID_NOT_FOUND;
++	}
++	mutex_unlock(&ua_idr_mutex);
++
++	mutex_lock(&auth_to_delete->mutex);
++#ifdef CONFIG_QOS_CTRL
++	qos_switch(auth_to_delete, AUTH_STATUS_DISABLED);
++#endif
++	auth_to_delete->status = AUTH_STATUS_DEAD;
++	mutex_unlock(&auth_to_delete->mutex);
++
++	put_auth_struct(auth_to_delete);
++
++	return 0;
++}
++
++static int auth_get(struct auth_ctrl_data *data)
++{
++	struct auth_struct *auth_to_get;
++	unsigned int tgid = data->pid;
++
++	mutex_lock(&ua_idr_mutex);
++	auth_to_get = idr_find(ua_idr, tgid);
++	if (!auth_to_get) {
++		mutex_unlock(&ua_idr_mutex);
++		pr_err("[AUTH_CTRL] no auth data for this pid=%d to get\n", tgid);
++		return -PID_NOT_FOUND;
++	}
++	get_auth_struct(auth_to_get);
++	mutex_unlock(&ua_idr_mutex);
++
++	mutex_lock(&auth_to_get->mutex);
++	if (auth_to_get->status == AUTH_STATUS_DEAD) {
++		mutex_unlock(&auth_to_get->mutex);
++		put_auth_struct(auth_to_get);
++		return -INVALID_AUTH;
++	}
++#ifdef CONFIG_RTG_AUTHORITY
++	data->rtg_ua_flag = auth_to_get->rtg_auth_flag;
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	data->qos_ua_flag = auth_to_get->qos_auth_flag;
++#endif
++	data->status = auth_to_get->status;
++	mutex_unlock(&auth_to_get->mutex);
++
++	put_auth_struct(auth_to_get);
++
++	return 0;
++}
++
++static int auth_switch(struct auth_ctrl_data *data)
++{
++	struct auth_struct *auth;
++	unsigned int tgid = data->pid;
++	unsigned int status = data->status;
++
++	if (status == 0 || status >= AUTH_STATUS_MAX_NR) {
++		pr_err("[AUTH_CTRL] not valied status %d\n", status);
++		return -ARG_INVALID;
++	}
++
++	mutex_lock(&ua_idr_mutex);
++	auth = idr_find(ua_idr, tgid);
++	if (!auth) {
++		mutex_unlock(&ua_idr_mutex);
++		pr_err("[AUTH_CTRL] no auth data for this pid=%d to switch\n", tgid);
++		return -PID_NOT_FOUND;
++	}
++	get_auth_struct(auth);
++	mutex_unlock(&ua_idr_mutex);
++
++	mutex_lock(&auth->mutex);
++	if (auth->status == AUTH_STATUS_DEAD) {
++		mutex_unlock(&auth->mutex);
++		put_auth_struct(auth);
++		return -INVALID_AUTH;
++	}
++
++	set_auth_flag(data, auth);
++#ifdef CONFIG_QOS_CTRL
++	qos_switch(auth, status);
++#endif
++	auth->status = status;
++	mutex_unlock(&auth->mutex);
++
++	put_auth_struct(auth);
++
++	return 0;
++}
++
++typedef int (*auth_manipulate_func)(struct auth_ctrl_data *data);
++
++static auth_manipulate_func auth_func_array[AUTH_MAX_NR] = {
++	/*
++	 * auth_enable: Start authority control for specific tgid.
++	 * auth_delte:  End authroity control, remove statistic datas.
++	 * auth_get:    Get auth info, deprecated.
++	 * auth_switch: Change authority flag and status for specific tgid.
++	 */
++	NULL,
++	auth_enable,
++	auth_delete,
++	auth_get,
++	auth_switch,
++};
++
++static long do_auth_manipulate(struct auth_ctrl_data *data)
++{
++	long ret = 0;
++	unsigned int type = data->type;
++
++	if (type >= AUTH_MAX_NR) {
++		pr_err("[AUTH_CTRL] BASIC_AUTH_CTRL_OPERATION type not valid\n");
++		return -ARG_INVALID;
++	}
++
++	if (auth_func_array[type])
++		ret = (long)(*auth_func_array[type])(data);
++
++	return ret;
++}
++
++static long ctrl_auth_basic_operation(int abi, void __user *uarg)
++{
++	struct auth_ctrl_data auth_data;
++	long ret = -1;
++
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
++
++	switch (abi) {
++	case AUTH_IOCTL_ABI_ARM32:
++		ret = copy_from_user(&auth_data,
++				(void __user *)compat_ptr((compat_uptr_t)uarg),
++				sizeof(struct auth_ctrl_data));
++		break;
++	case AUTH_IOCTL_ABI_AARCH64:
++		ret = copy_from_user(&auth_data, uarg, sizeof(struct auth_ctrl_data));
++		break;
++	default:
++		pr_err("[AUTH_CTRL] abi format error\n");
++		break;
++	}
++
++#pragma GCC diagnostic pop
++
++	if (ret) {
++		pr_err("[AUTH_RTG] %s copy user data failed\n", __func__);
++		return ret;
++	}
++
++	ret = do_auth_manipulate(&auth_data);
++	if (ret < 0) {
++		pr_err("[AUTH_CTRL] BASIC_AUTH_CTRL_OPERATION failed\n");
++		return ret;
++	}
++
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
++
++	switch (abi) {
++	case AUTH_IOCTL_ABI_ARM32:
++		ret = copy_to_user((void __user *)compat_ptr((compat_uptr_t)uarg),
++				&auth_data,
++				sizeof(struct auth_ctrl_data));
++		break;
++	case AUTH_IOCTL_ABI_AARCH64:
++		ret = copy_to_user(uarg, &auth_data, sizeof(struct auth_ctrl_data));
++		break;
++	default:
++		pr_err("[AUTH_CTRL] abi format error\n");
++		break;
++	}
++
++#pragma GCC diagnostic pop
++
++	if (ret) {
++		pr_err("[AUTH_RTG] %s copy user data failed\n", __func__);
++		return ret;
++	}
++
++	return 0;
++}
++
++long do_auth_ctrl_ioctl(int abi, struct file *file, unsigned int cmd, unsigned long arg)
++{
++	void __user *uarg = (void __user *)arg;
++	unsigned int func_cmd = _IOC_NR(cmd);
++
++	if (uarg == NULL) {
++		pr_err("%s: invalid user uarg\n", __func__);
++		return -EINVAL;
++	}
++
++	if (_IOC_TYPE(cmd) != AUTH_CTRL_IPC_MAGIG) {
++		pr_err("%s: authority ctrl magic fail, TYPE=%d\n",
++		       __func__, _IOC_TYPE(cmd));
++		return -EINVAL;
++	}
++
++	if (func_cmd >= AUTH_CTRL_MAX_NR) {
++		pr_err("%s: authority ctrl cmd error, cmd:%d\n",
++		       __func__, _IOC_TYPE(cmd));
++		return -EINVAL;
++	}
++
++	if (g_func_array[func_cmd])
++		return (*g_func_array[func_cmd])(abi, uarg);
++
++	return -EINVAL;
++}
++
++#define get_authority_flag(func_id)	(1 << (func_id - 1))
++
++static inline unsigned int get_true_uid(struct task_struct *p)
++{
++	if (!p)
++		return get_uid(current_user())->uid.val;
++
++	return task_uid(p).val;
++}
++
++/*
++ * Return 1000 for both SYSTEM and ROOT
++ * Return current's uid if p is NULL
++ */
++static inline unsigned int get_authority_uid(struct task_struct *p)
++{
++	unsigned int uid = get_true_uid(p);
++
++	if (super_uid(uid))
++		uid = SUPER_UID;
++
++	return uid;
++}
++
++static unsigned int auth_flag(struct auth_struct *auth, unsigned int type)
++{
++	switch (type) {
++#ifdef CONFIG_RTG_AUTHORITY
++	case RTG_AUTH_FLAG:
++		return auth->rtg_auth_flag;
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	case QOS_AUTH_FLAG:
++		return auth->qos_auth_flag;
++#endif
++	default:
++		pr_err("[AUTH_CTRL] not valid auth type\n");
++		return INVALIED_AUTH_FLAG;
++	}
++}
++
++bool check_authorized(unsigned int func_id, unsigned int type)
++{
++	bool authorized = false;
++	struct auth_struct *auth;
++	unsigned int af = get_authority_flag(func_id);
++	unsigned int uid = get_authority_uid(NULL);
++	unsigned int tgid = task_tgid_nr(current);
++
++	mutex_lock(&ua_idr_mutex);
++	if (!ua_idr) {
++		mutex_unlock(&ua_idr_mutex);
++		pr_err("[AUTH_CTRL] authority idr table missed, auth failed\n");
++		return authorized;
++	}
++
++	auth = (struct auth_struct *)idr_find(ua_idr, tgid);
++	if (!auth) {
++		if (uid != SUPER_UID) {
++			mutex_unlock(&ua_idr_mutex);
++			pr_err("[AUTH_CTRL] no auth data for this pid = %d\n", tgid);
++			return authorized;
++		} else if (init_super_authority(tgid)) {
++			mutex_unlock(&ua_idr_mutex);
++			pr_err("[AUTH_CTRL] init super authority failed\n");
++			return authorized;
++		}
++
++		//the auth must exist
++		auth = (struct auth_struct *)idr_find(ua_idr, tgid);
++		if (!auth)
++			return authorized;
++	}
++
++	get_auth_struct(auth);
++	mutex_unlock(&ua_idr_mutex);
++
++	mutex_lock(&auth->mutex);
++	if (auth->status == AUTH_STATUS_DEAD) {
++		mutex_unlock(&auth->mutex);
++		pr_info("[AUTH_CTRL] not valid auth for pid %d\n", tgid);
++		put_auth_struct(auth);
++		return authorized;
++	}
++	if (auth && (auth_flag(auth, type) & af))
++		authorized = true;
++
++	mutex_unlock(&auth->mutex);
++
++	put_auth_struct(auth);
++
++	return authorized;
++}
++
++/*
++ * Return authority info for given task
++ * return current's auth if p is NULL
++ * refcount will inc if this call return the valid auth
++ * make sure to call put_auth_struct before the calling end
++ */
++struct auth_struct *get_authority(struct task_struct *p)
++{
++	unsigned int tgid;
++	struct auth_struct *auth;
++
++	tgid = (p == NULL ? current->tgid : p->tgid);
++
++	mutex_lock(&ua_idr_mutex);
++	auth = idr_find(ua_idr, tgid);
++	if (auth)
++		get_auth_struct(auth);
++
++	mutex_unlock(&ua_idr_mutex);
++
++	return auth;
++}
++
++long proc_auth_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	return do_auth_ctrl_ioctl(AUTH_IOCTL_ABI_AARCH64, file, cmd, arg);
++}
++
++#ifdef CONFIG_COMPAT
++long proc_auth_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	return do_auth_ctrl_ioctl(AUTH_IOCTL_ABI_ARM32, file, cmd,
++				(unsigned long)(compat_ptr((compat_uptr_t)arg)));
++}
++#endif
++
++static const struct file_operations auth_ctrl_fops = {
++	.owner		= THIS_MODULE,
++	.unlocked_ioctl = proc_auth_ioctl,
++#ifdef CONFIG_COMPAT
++	.compat_ioctl   = proc_auth_compat_ioctl,
++#endif
++};
++
++static struct miscdevice auth_ctrl_device = {
++	.minor		= MISC_DYNAMIC_MINOR,
++	.name		= "auth_ctrl",
++	.fops		= &auth_ctrl_fops,
++};
++
++static __init int auth_ctrl_init_module(void)
++{
++	int err;
++
++	err = misc_register(&auth_ctrl_device);
++	if (err < 0) {
++		pr_err("auth_ctrl register failed\n");
++		return err;
++	}
++
++	pr_info("auth_ctrl init success\n");
++
++	BUG_ON(init_ua_idr());
++
++#ifdef CONFIG_QOS_CTRL
++	init_qos_ctrl();
++#endif
++
++	init_sched_auth_debug_procfs();
++
++	return 0;
++}
++
++static void auth_ctrl_exit_module(void)
++{
++	remove_authority_control();
++	misc_deregister(&auth_ctrl_device);
++}
++
++/* module entry points */
++module_init(auth_ctrl_init_module);
++module_exit(auth_ctrl_exit_module);
++
++MODULE_LICENSE("GPL v2");
++
+diff --git a/drivers/auth_ctl/auth_ctrl.h b/drivers/auth_ctl/auth_ctrl.h
+new file mode 100644
+index 000000000..e55c39abe
+--- /dev/null
++++ b/drivers/auth_ctl/auth_ctrl.h
+@@ -0,0 +1,52 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * drivers/auth_ctl/auth_ctrl.h
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ *
++ */
++
++#ifndef __AUTH_CTRL_H
++#define __AUTH_CTRL_H
++
++#include <linux/ioctl.h>
++#include <linux/types.h>
++#include <linux/spinlock.h>
++#include <linux/list.h>
++#include <linux/refcount.h>
++
++#include <linux/sched/qos_ctrl.h>
++
++struct auth_struct {
++	struct mutex mutex;
++	refcount_t usage;
++	unsigned int status;
++#ifdef CONFIG_RTG_AUTHORITY
++	unsigned int rtg_auth_flag;
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	unsigned int qos_auth_flag;
++#endif
++#ifdef CONFIG_QOS_CTRL
++	unsigned int num[NR_QOS];
++	struct list_head tasks[NR_QOS];
++#endif
++};
++
++/*
++ * for debug fs
++ */
++struct idr *get_auth_ctrl_idr(void);
++struct mutex *get_auth_idr_mutex(void);
++
++#ifdef CONFIG_AUTH_QOS_DEBUG
++int __init init_sched_auth_debug_procfs(void);
++#else
++static inline int init_sched_auth_debug_procfs(void)
++{
++	return 0;
++}
++#endif
++
++#endif /* __AUTH_CTRL_H */
++
+diff --git a/drivers/auth_ctl/auth_qos_debug.c b/drivers/auth_ctl/auth_qos_debug.c
+new file mode 100644
+index 000000000..b140b50ea
+--- /dev/null
++++ b/drivers/auth_ctl/auth_qos_debug.c
+@@ -0,0 +1,157 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * drivers/auth_ctl/auth_qos_debug.c
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ *
++ */
++#include <linux/cred.h>
++#include <linux/mutex.h>
++#include <linux/errno.h>
++#include <linux/fs.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/sched.h>
++#include <linux/kernel.h>
++#include <linux/slab.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++#include <linux/sched/auth_ctrl.h>
++#include <linux/sched/rtg_auth.h>
++#include <linux/sched/qos_ctrl.h>
++#include <linux/sched/qos_auth.h>
++
++#include "auth_ctrl.h"
++#include "qos_ctrl.h"
++
++#define seq_printf_auth(m, x...) \
++do { \
++	if (m) \
++		seq_printf(m, x); \
++	else \
++		printk(x); \
++} while (0)
++
++static void print_auth_id(struct seq_file *file,
++	const int tgid)
++{
++	seq_printf_auth(file, "AUTH_PID            :%d\n", tgid);
++}
++
++static void print_auth_info(struct seq_file *file,
++	const struct auth_struct *auth)
++{
++	seq_printf_auth(file, "AUTH_STATUS        :%d\n", auth->status);
++#ifdef CONFIG_RTG_AUTHORITY
++	seq_printf_auth(file, "RTG_FLAG           :%04x\n", auth->rtg_auth_flag);
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	seq_printf_auth(file, "QOS_FLAG           :%04x\n", auth->qos_auth_flag);
++#endif
++}
++
++static void print_qos_count(struct seq_file *file,
++	const struct auth_struct *auth)
++{
++	int i;
++
++	for (i = QOS_POLICY_MIN_LEVEL; i < NR_QOS; ++i)
++		seq_printf_auth(file, "QOS level %d thread nr  :%d\n", i, auth->num[i]);
++}
++
++static void print_qos_thread(struct seq_file *file,
++	const struct auth_struct *auth)
++{
++	struct qos_task_struct *tmp, *next;
++	struct task_struct *p;
++	int i;
++
++	for (i = QOS_POLICY_MIN_LEVEL; i < NR_QOS; ++i) {
++		seq_printf_auth(file, "QOS level %d threads:", i);
++		list_for_each_entry_safe(tmp, next, &auth->tasks[i], qos_list) {
++			p = container_of(tmp, struct task_struct, qts);
++			seq_printf_auth(file, "%d ", p->pid);
++		}
++		seq_printf_auth(file, "\n");
++	}
++
++}
++
++static inline void print_auth_struct(struct seq_file *file, struct auth_struct *auth)
++{
++	print_auth_info(file, auth);
++	seq_printf_auth(file, "\n");
++	print_qos_count(file, auth);
++	seq_printf_auth(file, "\n");
++#ifdef CONFIG_QOS_CTRL
++	print_qos_thread(file, auth);
++#endif
++	seq_printf_auth(file, "---------------------------------------------------------\n");
++
++}
++
++int authority_printf_handler(int id, void *p, void *para)
++{
++	struct auth_struct *auth = (struct auth_struct *)p;
++	struct seq_file *file = (struct seq_file *)para;
++
++	/*
++	 * data consistency is not that important here
++	 */
++	seq_printf_auth(file, "\n\n");
++	print_auth_id(file, id);
++	seq_printf_auth(file, "\n");
++
++	/* no need to add refcount here, auth must alive in ua_idr_mutex */
++	print_auth_struct(file, auth);
++
++	return 0;
++}
++
++static int sched_auth_debug_show(struct seq_file *file, void *param)
++{
++	struct idr *ua_idr = get_auth_ctrl_idr();
++	struct mutex *ua_idr_mutex = get_auth_idr_mutex();
++	/*
++	 * NOTICE:
++	 * if mutex in authority_printf_handler, sleep may occur
++	 * change ths spin_lock to mutex, or remove mutex in handler
++	 */
++
++	mutex_lock(ua_idr_mutex);
++	/* will never return 0 here, auth in ua_idr must alive */
++	idr_for_each(ua_idr, authority_printf_handler, file);
++	mutex_unlock(ua_idr_mutex);
++
++	return 0;
++}
++
++static int sched_auth_debug_release(struct inode *inode, struct file *file)
++{
++	seq_release(inode, file);
++	return 0;
++}
++
++static int sched_auth_debug_open(struct inode *inode, struct file *filp)
++{
++	return single_open(filp, sched_auth_debug_show, NULL);
++}
++
++static const struct proc_ops sched_auth_debug_fops = {
++	.proc_open = sched_auth_debug_open,
++	.proc_read = seq_read,
++	.proc_lseek = seq_lseek,
++	.proc_release = sched_auth_debug_release,
++};
++
++int __init init_sched_auth_debug_procfs(void)
++{
++	struct proc_dir_entry *pe = NULL;
++
++	pe = proc_create("sched_auth_qos_debug",
++		0400, NULL, &sched_auth_debug_fops);
++	if (unlikely(!pe))
++		return -ENOMEM;
++	return 0;
++}
++
+diff --git a/drivers/auth_ctl/qos_ctrl.c b/drivers/auth_ctl/qos_ctrl.c
+new file mode 100644
+index 000000000..b5cd8206e
+--- /dev/null
++++ b/drivers/auth_ctl/qos_ctrl.c
+@@ -0,0 +1,764 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * drivers/auth_ctl/auth_ctrl.c
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ *
++ */
++#include <linux/sched.h>
++#include <linux/list.h>
++#include <linux/mutex.h>
++#include <linux/stop_machine.h>
++#include <linux/sched/auth_ctrl.h>
++#include <linux/sched/rtg_auth.h>
++#include <linux/sched/qos_ctrl.h>
++#include <linux/sched/qos_auth.h>
++#include <uapi/linux/sched/types.h>
++
++#include "auth_ctrl.h"
++#include "qos_ctrl.h"
++
++typedef long (*qos_ctrl_func)(int abi, void __user *uarg);
++
++static long ctrl_qos_operation(int abi, void __user *uarg);
++static long ctrl_qos_policy(int abi, void __user *uarg);
++
++#define QOS_LEVEL_SET_MAX 5
++
++static qos_ctrl_func g_func_array[QOS_CTRL_MAX_NR] = {
++	NULL, /* reserved */
++	ctrl_qos_operation,
++	ctrl_qos_policy,
++};
++
++static struct qos_policy_map qos_policy_array[QOS_POLICY_MAX_NR];
++
++void remove_qos_tasks(struct auth_struct *auth)
++{
++	int i;
++	struct qos_task_struct *tmp, *next;
++	struct task_struct *p;
++
++	mutex_lock(&auth->mutex);
++	for (i = QOS_POLICY_MIN_LEVEL; i < NR_QOS; ++i) {
++		list_for_each_entry_safe(tmp, next, &auth->tasks[i], qos_list) {
++			struct qos_task_struct **tmp_ptr = &tmp;
++			p = container_of(tmp_ptr, struct task_struct, qts);
++			if (!list_empty(&tmp->qos_list)) {
++				list_del_init(&tmp->qos_list);
++				tmp->in_qos = NO_QOS;
++				put_task_struct(p);
++			}
++		}
++	}
++	mutex_unlock(&auth->mutex);
++}
++
++static void init_sched_attr(struct sched_attr *attr)
++{
++	memset(attr, 0, sizeof(struct sched_attr));
++}
++
++static inline bool is_system(unsigned int uid)
++{
++	return uid == SYSTEM_UID;
++}
++
++/* This function must be called when p is valid. That means the p's refcount must exist */
++static int sched_set_task_qos_attr(struct task_struct *p, int level, int status)
++{
++	struct qos_policy_item *item;
++	struct qos_policy_map *policy_map;
++	struct sched_attr attr;
++
++	read_lock(&qos_policy_array[status].lock);
++	if (!qos_policy_array[status].initialized) {
++		pr_err("[QOS_CTRL] dirty qos policy, pid=%d, uid=%d, status=%d\n",
++		       p->pid, p->cred->uid.val, status);
++		read_unlock(&qos_policy_array[status].lock);
++		return -DIRTY_QOS_POLICY;
++	}
++
++	policy_map = &qos_policy_array[status];
++	item = &policy_map->levels[level];
++
++	init_sched_attr(&attr);
++	attr.size			= sizeof(struct sched_attr);
++	attr.sched_policy		= SCHED_NORMAL;
++
++	if (policy_map->policy_flag & QOS_FLAG_NICE)
++		attr.sched_nice = item->nice;
++
++
++	if ((policy_map->policy_flag & QOS_FLAG_RT) && item->rt_sched_priority) {
++		attr.sched_policy = SCHED_FIFO;
++		attr.sched_flags |= SCHED_FLAG_RESET_ON_FORK;
++		attr.sched_priority = item->rt_sched_priority;
++	}
++
++	read_unlock(&qos_policy_array[status].lock);
++
++	if (unlikely(p->flags & PF_EXITING)) {
++		pr_info("[QOS_CTRL] dying task, no need to set qos\n");
++		return -THREAD_EXITING;
++	}
++
++	return sched_setattr_nocheck(p, &attr);
++}
++
++/*
++ * Switch qos mode when status changed.
++ * Lock auth before calling this function
++ */
++void qos_switch(struct auth_struct *auth, int target_status)
++{
++	int i;
++	int ret;
++	struct task_struct *task;
++	struct qos_task_struct *qts;
++
++	if (!auth) {
++		pr_err("[QOS_CTRL] auth no exist, qos switch failed\n");
++		return;
++	}
++
++	lockdep_assert_held(&auth->mutex);
++
++	if (auth->status == target_status) {
++		pr_info("[QOS_CTRL] same status, no need to switch qos\n");
++		return;
++	}
++
++	for (i = QOS_POLICY_MIN_LEVEL; i < NR_QOS; ++i) {
++		list_for_each_entry(qts, &auth->tasks[i], qos_list) {
++			struct qos_task_struct **qts_ptr = &qts;
++			task = container_of(qts_ptr, struct task_struct, qts);
++			ret = sched_set_task_qos_attr(task, i, target_status);
++			if (ret)
++				pr_err("[QOS_CTRL] set qos attr failed, qos switch failed\n");
++		}
++	}
++}
++
++static int qos_insert_task(struct task_struct *p, struct list_head *head, unsigned int level)
++{
++	struct qos_task_struct *qts = p->qts;
++
++	if (qts->in_qos > NO_QOS) {
++		pr_err("[QOS_CTRL] qos apply still active, no duplicate add\n");
++		return -PID_DUPLICATE;
++	}
++
++	if (likely(list_empty(&qts->qos_list))) {
++		get_task_struct(p);
++		list_add(&qts->qos_list, head);
++		qts->in_qos = level;
++	}
++
++	return 0;
++}
++
++static int qos_remove_task(struct task_struct *p)
++{
++	struct qos_task_struct *qts = (struct qos_task_struct *) &p->qts;
++
++	if (qts->in_qos == NO_QOS) {
++		pr_err("[QOS_CTRL] task not in qos, no need to remove\n");
++		return -PID_NOT_EXIST;
++	}
++
++	if (likely(!list_empty(&qts->qos_list))) {
++		list_del_init(&qts->qos_list);
++		qts->in_qos = NO_QOS;
++		put_task_struct(p);
++	}
++
++	return 0;
++}
++
++static inline bool super_user(struct task_struct *p)
++{
++	return super_uid(task_uid(p).val);
++}
++
++/*
++ * judge permission for changing tasks' qos
++ */
++static bool can_change_qos(struct task_struct *p, unsigned int qos_level)
++{
++	struct auth_struct *auth;
++	auth = get_authority(p);
++	/* just system & root user can set(be setted) high qos level */
++	if (!auth || (auth && !super_user(p) && qos_level > QOS_LEVEL_SET_MAX)) {
++		pr_err("[QOS_CTRL] %d have no permission to change qos\n", p->pid);
++		return false;
++	}
++
++	return true;
++}
++
++int qos_apply(struct qos_ctrl_data *data)
++{
++	unsigned int level = data->level;
++	struct auth_struct *auth;
++	struct task_struct *p;
++	struct qos_task_struct *qts;
++	int pid = data->pid;
++	int ret;
++
++	if (level >= NR_QOS || level == NO_QOS) {
++		pr_err("[QOS_CTRL] no this qos level, qos apply failed\n");
++		ret = -ARG_INVALID;
++		goto out;
++	}
++
++	p = find_get_task_by_vpid((pid_t)pid);
++	if (unlikely(!p)) {
++		pr_err("[QOS_CTRL] no matching task for this pid, qos apply failed\n");
++		ret = -ESRCH;
++		goto out;
++	}
++
++	if (unlikely(p->flags & PF_EXITING)) {
++		pr_info("[QOS_CTRL] dying task, no need to set qos\n");
++		ret = -THREAD_EXITING;
++		goto out_put_task;
++	}
++
++	if (!can_change_qos(current, level)) {
++		pr_err("[QOS_CTRL] QOS apply not permit\n");
++		ret = -ARG_INVALID;
++		goto out_put_task;
++	}
++
++	auth = get_authority(p);
++	if (!auth) {
++		pr_err("[QOS_CTRL] no auth data for pid=%d(%s), qos apply failed\n",
++		       p->tgid, p->comm);
++		ret = -PID_NOT_FOUND;
++		goto out_put_task;
++	}
++
++	mutex_lock(&auth->mutex);
++	if (auth->status == AUTH_STATUS_DEAD) {
++		pr_err("[QOS_CTRL] this auth data has been deleted\n");
++		ret = -INVALID_AUTH;
++		goto out_unlock;
++	}
++
++	if (auth->num[level] >= QOS_NUM_MAX) {
++		pr_err("[QOS_CTRL] qos num exceeds limit, cached only\n");
++		ret = -QOS_THREAD_NUM_EXCEED_LIMIT;
++		goto out_unlock;
++	}
++
++	qts = (struct qos_task_struct *) &p->qts;
++
++	if (rt_task(p) && qts->in_qos == NO_QOS) {
++		pr_err("[QOS_CTRL] can not apply qos for native rt task\n");
++		ret = -ALREADY_RT_TASK;
++		goto out_unlock;
++	}
++
++	/* effective qos must in range [NO_QOS, NR_QOS) */
++	if (qts->in_qos != NO_QOS) {
++		if (qts->in_qos == level) {
++			ret = 0;
++			goto out_unlock;
++		}
++
++		--auth->num[qts->in_qos];
++		qos_remove_task(p);
++	}
++
++	ret = qos_insert_task(p, &auth->tasks[level], level);
++	if (ret < 0) {
++		pr_err("[QOS_CTRL] insert task to qos list %d failed\n", level);
++		goto out_unlock;
++	}
++
++	++auth->num[level];
++
++	ret = sched_set_task_qos_attr(p, level, auth->status);
++	if (ret) {
++		pr_err("[QOS_CTRL] set qos_level %d for thread %d on status %d failed\n",
++		       level, p->pid, auth->status);
++		--auth->num[level];
++		qos_remove_task(p);
++	}
++
++out_unlock:
++	mutex_unlock(&auth->mutex);
++	put_auth_struct(auth);
++out_put_task:
++	put_task_struct(p);
++out:
++	return ret;
++}
++
++int qos_leave(struct qos_ctrl_data *data)
++{
++	unsigned int level;
++	struct auth_struct *auth;
++	struct task_struct *p;
++	struct qos_task_struct *qts;
++	int pid = data->pid;
++	int ret;
++
++	p = find_get_task_by_vpid((pid_t)pid);
++	if (!p) {
++		pr_err("[QOS_CTRL] no matching task for this pid, qos apply failed\n");
++		ret = -ESRCH;
++		goto out;
++	}
++
++	if (unlikely(p->flags & PF_EXITING)) {
++		pr_info("[QOS_CTRL] dying task, no need to set qos\n");
++		ret = -THREAD_EXITING;
++		goto out_put_task;
++	}
++
++	auth = get_authority(p);
++	if (!auth) {
++		pr_err("[QOS_CTRL] no auth data for pid=%d(%s), qos stop failed\n",
++		       p->tgid, p->comm);
++		ret = -PID_NOT_FOUND;
++		goto out_put_task;
++	}
++
++	mutex_lock(&auth->mutex);
++
++	qts = (struct qos_task_struct *) &p->qts;
++
++	level = qts->in_qos;
++	if (level == NO_QOS) {
++		pr_err("[QOS_CTRL] task not in qos list, qos stop failed\n");
++		ret = -ARG_INVALID;
++		goto out_unlock;
++	}
++
++	if (!can_change_qos(current, 0)) {
++		pr_err("[QOS_CTRL] apply for others not permit\n");
++		ret = -ARG_INVALID;
++		goto out_unlock;
++	}
++
++	if (auth->status == AUTH_STATUS_DEAD) {
++		pr_err("[QOS_CTRL] this auth data has been deleted\n");
++		ret = -INVALID_AUTH;
++		goto out_unlock;
++	}
++
++	ret = qos_remove_task(p);
++	if (ret < 0) {
++		pr_err("[QOS_CTRL] remove task from qos list %d failed\n", level);
++		goto out_unlock;
++	}
++
++	--auth->num[level];
++
++	/*
++	 * NO NEED to judge whether current status is AUTH_STATUS_DISABLE.
++	 * In the auth destoring context, the removing of thread's sched attr was protected by
++	 * auth->mutex, AUTH_STATUS_DISABLED will never appear here.
++	 *
++	 * The second param 3 means nothing, actually you can use any valid level here, cause the
++	 * policy matching AUTH_STATUS_DISABLED has default parameters for all qos level, which can
++	 * keep a powerful thread to behave like a ordinary thread.
++	 */
++	ret = sched_set_task_qos_attr(p, 3, AUTH_STATUS_DISABLED);
++	if (ret)
++		pr_err("[QOS_CTRL] set qos_level %d for thread %d on status %d to default failed\n",
++		       level, p->pid, auth->status);
++
++out_unlock:
++	mutex_unlock(&auth->mutex);
++	put_auth_struct(auth);
++out_put_task:
++	put_task_struct(p);
++out:
++	return ret;
++}
++
++int qos_get(struct qos_ctrl_data *data)
++{
++	struct task_struct *p;
++	struct qos_task_struct *qts;
++	int pid = data->pid;
++	int ret = 0;
++
++	p = find_get_task_by_vpid((pid_t)pid);
++	if (unlikely(!p)) {
++		pr_err("[QOS_CTRL] no matching task for this pid, qos get failed\n");
++		ret = -ESRCH;
++		goto out;
++	}
++
++	if (unlikely(p->flags & PF_EXITING)) {
++		pr_info("[QOS_CTRL] dying task, no need to set qos\n");
++		ret = -THREAD_EXITING;
++		goto out_put_task;
++	}
++
++	qts = (struct qos_task_struct *) &p->qts;
++	data->qos = qts->in_qos;
++
++out_put_task:
++	put_task_struct(p);
++out:
++	return ret;
++}
++
++void init_task_qos(struct task_struct *p)
++{
++    p->qts = kzalloc(sizeof(struct qos_task_struct), GFP_KERNEL);
++    if (p->qts) {
++        INIT_LIST_HEAD(&p->qts->qos_list);
++        p->qts->in_qos = NO_QOS;
++    }
++}
++
++/*
++ * Remove statistic info in auth when task exit
++ */
++void sched_exit_qos_list(struct task_struct *p)
++{
++	struct auth_struct *auth;
++	struct qos_task_struct *qts = (struct qos_task_struct *) &p->qts;
++
++	/*
++	 * For common tasks(the vast majority):
++	 * skip get authority, fast return here.
++	 *
++	 * For qos tasks:
++	 * If contend with auth_delete() happens,
++	 * 1. function return here, auth_delete() will do the clean up
++	 * 2. function go on, either no auth return, either do clean up here
++	 * Both cases guarantee data synchronization
++	 */
++	if (likely(qts->in_qos == NO_QOS))
++		return;
++
++	auth = get_authority(p);
++	if (!auth)
++		goto out;
++
++	mutex_lock(&auth->mutex);
++	if (qts->in_qos == NO_QOS) {
++		mutex_unlock(&auth->mutex);
++		goto out_put_auth;
++	}
++	if (qts && qts->in_qos != NO_QOS) {
++    	--auth->num[qts->in_qos];
++    	list_del_init(&qts->qos_list);
++    	qts->in_qos = NO_QOS;
++    	put_task_struct(p);
++	}
++	mutex_unlock(&auth->mutex);
++	kfree(p->qts); // 释放 qts 内存
++	p->qts = NULL;
++
++out_put_auth:
++	put_auth_struct(auth);
++out:
++	return;
++}
++
++typedef int (*qos_manipulate_func)(struct qos_ctrl_data *data);
++
++static qos_manipulate_func qos_func_array[QOS_OPERATION_CMD_MAX_NR] = {
++	NULL,
++	qos_apply,  //1
++	qos_leave,
++	qos_get,
++};
++
++static long do_qos_manipulate(struct qos_ctrl_data *data)
++{
++	long ret = 0;
++	unsigned int type = data->type;
++
++	if (type <= 0 || type >= QOS_OPERATION_CMD_MAX_NR) {
++		pr_err("[QOS_CTRL] CMD_ID_QOS_MANIPULATE type not valid\n");
++		return -ARG_INVALID;
++	}
++
++	if (qos_func_array[type])
++		ret = (long)(*qos_func_array[type])(data);
++
++	return ret;
++}
++
++static long ctrl_qos_operation(int abi, void __user *uarg)
++{
++	struct qos_ctrl_data qos_data;
++	int ret = -1;
++
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
++
++	switch (abi) {
++	case QOS_IOCTL_ABI_ARM32:
++		ret = copy_from_user(&qos_data,
++				(void __user *)compat_ptr((compat_uptr_t)uarg),
++				sizeof(struct qos_ctrl_data));
++		break;
++	case QOS_IOCTL_ABI_AARCH64:
++		ret = copy_from_user(&qos_data, uarg, sizeof(struct qos_ctrl_data));
++		break;
++	default:
++		pr_err("[QOS_CTRL] abi format error\n");
++		break;
++	}
++
++#pragma GCC diagnostic pop
++
++	if (ret) {
++		pr_err("[QOS_CTRL] %s copy user data failed\n", __func__);
++		return ret;
++	}
++
++	ret = do_qos_manipulate(&qos_data);
++	if (ret < 0) {
++		pr_err("[QOS_CTRL] CMD_ID_QOS_MANIPULATE failed\n");
++		return ret;
++	}
++
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
++
++	switch (abi) {
++	case QOS_IOCTL_ABI_ARM32:
++		ret = copy_to_user((void __user *)compat_ptr((compat_uptr_t)uarg),
++				&qos_data, sizeof(struct qos_ctrl_data));
++		break;
++	case QOS_IOCTL_ABI_AARCH64:
++		ret = copy_to_user(uarg, &qos_data, sizeof(struct qos_ctrl_data));
++		break;
++	default:
++		pr_err("[QOS_CTRL] abi format error\n");
++		break;
++	}
++
++#pragma GCC diagnostic pop
++
++	if (ret) {
++		pr_err("[QOS_CTRL] %s copy to user failed\n", __func__);
++		return ret;
++	}
++	return 0;
++}
++
++#define MAX_LATENCY_NICE	19
++#define MIN_LATENCY_NICE	-20
++
++static inline bool valid_nice(int nice)
++{
++	return nice >= MIN_NICE && nice <= MAX_NICE;
++}
++
++static inline bool valid_latency_nice(int latency_nice)
++{
++	return latency_nice >= MIN_LATENCY_NICE && latency_nice <= MAX_LATENCY_NICE;
++}
++
++static inline bool valid_uclamp(int uclamp_min, int uclamp_max)
++{
++	if (uclamp_min > uclamp_max)
++		return false;
++	if (uclamp_max > SCHED_CAPACITY_SCALE)
++		return false;
++
++	return true;
++}
++
++static inline bool valid_rt(int sched_priority)
++{
++	if (sched_priority > MAX_USER_RT_PRIO - 1 || sched_priority < 0)
++		return false;
++
++	return true;
++}
++
++static bool valid_qos_flag(unsigned int qos_flag)
++{
++	if (qos_flag & ~QOS_FLAG_ALL)
++		return false;
++
++	return true;
++}
++
++static inline bool valid_qos_item(struct qos_policy_datas *datas)
++{
++	int i;
++	int type = datas->policy_type;
++	struct qos_policy_data *data;
++
++	if (type <= 0 || type >= QOS_POLICY_MAX_NR) {
++		pr_err("[QOS_CTRL] not valid qos policy type, policy change failed\n");
++		goto out_failed;
++	}
++
++	if (!valid_qos_flag(datas->policy_flag)) {
++		pr_err("[QOS_CTRL] not valid qos flag, policy change failed\n");
++		goto out_failed;
++	}
++
++	/* check user space qos polcicy data, level 0 reserved */
++	for (i = 0; i < NR_QOS; ++i) {
++		data = &datas->policys[i];
++
++		if (!valid_nice(data->nice)) {
++			pr_err("[QOS_CTRL] invalid nice, policy change failed\n");
++			goto out_failed;
++		}
++
++		if (!valid_latency_nice(data->latency_nice)) {
++			pr_err("[QOS_CTRL] invalid latency_nice, policy change failed\n");
++			goto out_failed;
++		}
++
++		if (!valid_uclamp(data->uclamp_min, data->uclamp_max)) {
++			pr_err("[QOS_CTRL] invalid uclamp, policy change failed\n");
++			goto out_failed;
++		}
++
++		if (!valid_rt(data->rt_sched_priority)) {
++			pr_err("[QOS_CTRL] invalid rt, policy change failed\n");
++			goto out_failed;
++		}
++	}
++
++	return true;
++
++out_failed:
++	pr_err("[QOS_CTRL] not valid qos policy params\n");
++	return false;
++}
++
++static long do_qos_policy_change(struct qos_policy_datas *datas)
++{
++	long ret = 0;
++	int i;
++	struct qos_policy_item *item;
++	struct qos_policy_data *data;
++	int type = datas->policy_type;
++
++	if (type >= QOS_POLICY_MAX_NR) {
++		pr_err("[QOS_CTRL] not valid policy type\n");
++		goto out_failed;
++	}
++
++	if (!valid_qos_item(datas))
++		goto out_failed;
++
++	write_lock(&qos_policy_array[type].lock);
++	for (i = QOS_POLICY_MIN_LEVEL; i < NR_QOS; ++i) {
++		item = &qos_policy_array[type].levels[i];
++
++		/* user space policy params */
++		data = &datas->policys[i];
++
++		item->nice = data->nice;
++		item->latency_nice = data->latency_nice;
++		item->uclamp_min = data->uclamp_min;
++		item->uclamp_max = data->uclamp_max;
++		/* only specific qos level could use SCHED_FIFO */
++		item->rt_sched_priority = (i < MIN_RT_QOS_LEVEL) ? 0 :
++					  data->rt_sched_priority;
++	}
++	qos_policy_array[type].policy_flag = datas->policy_flag;
++	qos_policy_array[type].initialized = true;
++	write_unlock(&qos_policy_array[type].lock);
++
++	return ret;
++
++out_failed:
++	return -ARG_INVALID;
++}
++
++static long ctrl_qos_policy(int abi, void __user *uarg)
++{
++	struct qos_policy_datas policy_datas;
++	long ret = -1;
++
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
++
++	switch (abi) {
++	case QOS_IOCTL_ABI_ARM32:
++		ret = copy_from_user(&policy_datas,
++				(void __user *)compat_ptr((compat_uptr_t)uarg),
++				sizeof(struct qos_policy_datas));
++		break;
++	case QOS_IOCTL_ABI_AARCH64:
++		ret = copy_from_user(&policy_datas, uarg, sizeof(struct qos_policy_datas));
++		break;
++	default:
++		pr_err("[QOS_CTRL] abi format error\n");
++		break;
++	}
++
++#pragma GCC diagnostic pop
++
++	if (ret) {
++		pr_err("[QOS_RTG] %s copy user data failed\n", __func__);
++		return ret;
++	}
++
++	return do_qos_policy_change(&policy_datas);
++}
++
++long do_qos_ctrl_ioctl(int abi, struct file *file, unsigned int cmd, unsigned long arg)
++{
++	void __user *uarg = (void __user *)arg;
++	unsigned int func_cmd = _IOC_NR(cmd);
++
++	if (uarg == NULL) {
++		pr_err("%s: invalid user uarg\n", __func__);
++		return -EINVAL;
++	}
++
++	if (_IOC_TYPE(cmd) != QOS_CTRL_IPC_MAGIG) {
++		pr_err("%s: qos ctrl magic fail, TYPE=%d\n",
++		       __func__, _IOC_TYPE(cmd));
++		return -EINVAL;
++	}
++
++	if (func_cmd >= QOS_CTRL_MAX_NR) {
++		pr_err("%s: qos ctrl cmd error, cmd:%d\n",
++		       __func__, _IOC_TYPE(cmd));
++		return -EINVAL;
++	}
++
++#ifdef CONFIG_QOS_AUTHORITY
++	if (!check_authorized(func_cmd, QOS_AUTH_FLAG)) {
++		pr_err("[QOS_CTRL] %s: pid not authorized\n", __func__);
++		return -PID_NOT_AUTHORIZED;
++	}
++#endif
++
++	if (g_func_array[func_cmd])
++		return (*g_func_array[func_cmd])(abi, uarg);
++
++	return -EINVAL;
++}
++
++static void init_qos_policy_array(void)
++{
++	int i;
++
++	/* index 0 reserved */
++	for (i = 1; i < QOS_POLICY_MAX_NR; ++i)
++		rwlock_init(&qos_policy_array[i].lock);
++
++	pr_info("[QOS_CTRL] lock in qos policy initialized\n");
++}
++
++int __init init_qos_ctrl(void)
++{
++	init_qos_policy_array();
++
++	return 0;
++}
++
+diff --git a/drivers/auth_ctl/qos_ctrl.h b/drivers/auth_ctl/qos_ctrl.h
+new file mode 100644
+index 000000000..c3fb6b9e7
+--- /dev/null
++++ b/drivers/auth_ctl/qos_ctrl.h
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * drivers/auth_ctl/qos_ctrl.h
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ *
++ */
++
++#ifndef __QOS_CTRL_H
++#define __QOS_CTRL_H
++
++#include "../../kernel/sched/sched.h"
++
++#include <linux/sched/qos_ctrl.h>
++
++/* min qos level used in kernel space, begin index for LOOP */
++#define QOS_POLICY_MIN_LEVEL 0
++
++#ifndef MAX_USER_RT_PRIO
++#define MAX_USER_RT_PRIO 100
++#endif
++
++struct qos_policy_item {
++	int nice;
++	int latency_nice;
++	int uclamp_min;
++	int uclamp_max;
++	int rt_sched_priority;
++	int policy;
++};
++
++struct qos_policy_map {
++	rwlock_t lock;
++	bool initialized;
++	unsigned int policy_flag;
++	struct qos_policy_item levels[NR_QOS];
++};
++
++int __init init_qos_ctrl(void);
++
++#endif /* __OQS_CTRL_H */
++
+diff --git a/fs/proc/base.c b/fs/proc/base.c
+index 08808cbbe..4652b1c0a 100644
+--- a/fs/proc/base.c
++++ b/fs/proc/base.c
+@@ -103,6 +103,10 @@
+ #include "internal.h"
+ #include "fd.h"
+ 
++#ifdef CONFIG_QOS_CTRL
++#include <linux/sched/qos_ctrl.h>
++#endif
++
+ #include "../../lib/kstrtox.h"
+ 
+ /* NOTE:
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 464131256..56947b6ef 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -737,6 +737,20 @@ struct kmap_ctrl {
+ #endif
+ };
+ 
++#ifdef CONFIG_QOS_CTRL
++struct qos_task_struct {
++	/*
++	 * 'in_qos' marks the qos level o current task, greater value for
++	 * greater qos, range from (NO_QOS, NR_QOS)
++	 *
++	 *
++	 * 'qos_list' use to track task with qos supply in auth_struct
++	 */
++	int                 in_qos;
++	struct list_head    qos_list;
++};
++#endif
++
+ struct task_struct {
+ #ifdef CONFIG_THREAD_INFO_IN_TASK
+ 	/*
+@@ -1530,7 +1544,11 @@ struct task_struct {
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);
+ #endif
++#ifdef CONFIG_QOS_CTRL
++	ANDROID_KABI_USE(3,struct qos_task_struct *qts);
++#else
+ 	ANDROID_KABI_RESERVE(3);
++#endif
+ 	ANDROID_KABI_RESERVE(4);
+ 	ANDROID_KABI_RESERVE(5);
+ 	ANDROID_KABI_RESERVE(6);
+diff --git a/include/linux/sched/auth_ctrl.h b/include/linux/sched/auth_ctrl.h
+new file mode 100644
+index 000000000..7301cacc2
+--- /dev/null
++++ b/include/linux/sched/auth_ctrl.h
+@@ -0,0 +1,123 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * include/linux/sched/auth_ctrl.h
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ */
++
++#ifndef _AUTH_CTRL_H
++#define _AUTH_CTRL_H
++
++#include <linux/fs.h>
++
++#define ROOT_UID   0
++#define SYSTEM_UID 1000
++
++#define SUPER_UID SYSTEM_UID
++#define RESOURCE_SCHEDULE_SERVICE_UID 1096
++#define super_uid(uid) (uid == ROOT_UID || uid == SYSTEM_UID || uid == RESOURCE_SCHEDULE_SERVICE_UID)
++
++enum ioctl_abi_format_auth{
++	AUTH_IOCTL_ABI_ARM32,
++	AUTH_IOCTL_ABI_AARCH64,
++};
++
++enum auth_ctrl_cmdid {
++	BASIC_AUTH_CTRL = 1,
++	AUTH_CTRL_MAX_NR
++};
++
++#define AUTH_CTRL_IPC_MAGIG	0xCD
++
++#define	BASIC_AUTH_CTRL_OPERATION \
++	_IOWR(AUTH_CTRL_IPC_MAGIG, BASIC_AUTH_CTRL, struct auth_ctrl_data)
++
++enum auth_flag_type {
++#ifdef CONFIG_RTG_AUTHORITY
++	RTG_AUTH_FLAG,
++#endif
++#ifdef CONFIG_QOS_AUTHORITY
++	QOS_AUTH_FLAG,
++#endif
++};
++
++#define INVALIED_AUTH_FLAG	0x00000000
++
++struct auth_ctrl_data {
++	unsigned int pid;
++
++	/*
++	 * type:  operation type, see auth_manipulate_type, valid range [1, AUTH_MAX_NR)
++	 *
++	 * rtg_ua_flag: authority flag for RTG, see AF_RTG_ALL
++	 *
++	 * qos_ua_flag: authority flag for QOS, see AF_QOS_ALL
++	 *
++	 * status: current status for uid, use to match qos policy, see auth_status and
++	 * qos_policy_type, valid range [1, AUTH_STATUS_MAX_NR - 1)
++	 *
++	 */
++	unsigned int type;
++	unsigned int rtg_ua_flag;
++	unsigned int qos_ua_flag;
++	unsigned int status;
++};
++
++enum auth_err_no {
++	ARG_INVALID = 1,
++	THREAD_EXITING,
++	DIRTY_QOS_POLICY,
++	PID_NOT_AUTHORIZED,
++	PID_NOT_FOUND,
++	PID_DUPLICATE,
++	PID_NOT_EXIST,
++	INVALID_AUTH,
++	ALREADY_RT_TASK,
++	QOS_THREAD_NUM_EXCEED_LIMIT,
++};
++
++enum auth_manipulate_type {
++	AUTH_ENABLE = 1,
++	AUTH_DELETE,
++	AUTH_GET,
++	AUTH_SWITCH,
++	AUTH_MAX_NR,
++};
++
++#ifndef CONFIG_QOS_POLICY_MAX_NR
++#define QOS_STATUS_COUNT 5
++#else
++#define QOS_STATUS_COUNT CONFIG_QOS_POLICY_MAX_NR
++#endif
++
++/* keep match with qos_policy_type */
++enum auth_status {
++	/* reserved fo QOS_POLICY_DEFAULT, no qos supply in this status */
++	AUTH_STATUS_DISABLED = 1,
++
++	/* reserved for ROOT and SYSTEM */
++	AUTH_STATUS_SYSTEM_SERVER = 2,
++
++	/*
++	 * these space for user specific status
++	 * range (AUTH_STATUS_SYSTEM_SERVER, AUTH_STATUS_DEAD)
++	 *
++	 * initial the policy in matching index of qos_policy_array first before use
++	 * see ctrl_qos_policy
++	 */
++
++	/* reserved for destorying auth_struct*/
++	AUTH_STATUS_DEAD = QOS_STATUS_COUNT,
++
++	AUTH_STATUS_MAX_NR = QOS_STATUS_COUNT + 1,
++};
++
++struct auth_struct;
++long auth_ctrl_ioctl(int abi, struct file *file, unsigned int cmd, unsigned long arg);
++void get_auth_struct(struct auth_struct *auth);
++void put_auth_struct(struct auth_struct *auth);
++struct auth_struct *get_authority(struct task_struct *p);
++bool check_authorized(unsigned int func_id, unsigned int type);
++
++#endif /* _AUTH_CTRL_H */
++
+diff --git a/include/linux/sched/qos_auth.h b/include/linux/sched/qos_auth.h
+new file mode 100644
+index 000000000..f89a91194
+--- /dev/null
++++ b/include/linux/sched/qos_auth.h
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * include/linux/sched/qos_auth.h
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ */
++
++#ifndef _QOS_AUTH_H
++#define _QOS_AUTH_H
++
++#include <linux/sched.h>
++#include <linux/sched/auth_ctrl.h>
++
++/*
++ * QOS authority flags for SYSTEM or ROOT
++ *
++ * keep sync with qos_ctrl_cmdid
++ * when add a new cmd to qos_ctrl_cmdid
++ * keep new_flag = (old_flag << 1) + 1
++ * up to now, next flag value is 0x0007
++ */
++#define AF_QOS_ALL		0x0003
++
++/*
++ * delegated authority for normal uid
++ * trim access range for QOS
++ */
++#define AF_QOS_DELEGATED	0x0001
++
++bool check_authorized(unsigned int func_id, unsigned int type);
++
++#endif /* _QOS_AUTH_H */
++
+diff --git a/include/linux/sched/qos_ctrl.h b/include/linux/sched/qos_ctrl.h
+new file mode 100644
+index 000000000..28b930079
+--- /dev/null
++++ b/include/linux/sched/qos_ctrl.h
+@@ -0,0 +1,129 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * include/linux/sched/qos_ctrl.h
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ */
++
++#ifndef _QOS_CTRL_H
++#define _QOS_CTRL_H
++
++#include <linux/sched.h>
++#include <linux/fs.h>
++
++enum ioctl_abi_format_qos{
++	QOS_IOCTL_ABI_ARM32,
++	QOS_IOCTL_ABI_AARCH64,
++};
++
++enum qos_ctrl_cmdid {
++	QOS_CTRL = 1,
++	QOS_POLICY,
++	QOS_CTRL_MAX_NR
++};
++
++#define QOS_CTRL_IPC_MAGIG	0xCC
++
++#define QOS_CTRL_BASIC_OPERATION \
++	_IOWR(QOS_CTRL_IPC_MAGIG, QOS_CTRL, struct qos_ctrl_data)
++#define QOS_CTRL_POLICY_OPERATION \
++	_IOWR(QOS_CTRL_IPC_MAGIG, QOS_POLICY, struct qos_policy_datas)
++
++#define NO_QOS -1
++#define NR_QOS 7
++#define NR_RT_QOS 2
++#define MIN_RT_QOS_LEVEL (NR_QOS - NR_RT_QOS)
++
++#define QOS_NUM_MAX 2000
++
++enum qos_manipulate_type {
++	QOS_APPLY = 1,
++	QOS_LEAVE,
++	QOS_GET,
++	QOS_OPERATION_CMD_MAX_NR,
++};
++
++#ifndef CONFIG_QOS_POLICY_MAX_NR
++#define QOS_POLICYS_COUNT 5
++#else
++#define QOS_POLICYS_COUNT CONFIG_QOS_POLICY_MAX_NR
++#endif
++
++/*
++ * keep match with auth_status
++ *
++ * range (QOS_POLICY_SYSTEM, QOS_POLICY_MAX_NR) could defined by user
++ * use ctrl_qos_policy
++ */
++enum qos_policy_type {
++	QOS_POLICY_DEFAULT = 1,    /* reserved for "NO QOS" */
++	QOS_POLICY_SYSTEM  = 2,    /* reserved for ROOT and SYSTEM */
++	QOS_POLICY_MAX_NR = QOS_POLICYS_COUNT,
++};
++
++struct qos_ctrl_data {
++	int pid;
++
++	/*
++	 * type:  operation type, see qos_manipulate_type
++	 * level: valid from 1 to NR_QOS. Larger value, more aggressive supply
++	 */
++	unsigned int type;
++
++	/*
++	 * user space level, range from [1, NR_QOS]
++	 *
++	 * NOTICE!!!:
++	 * minus 1 before use in kernel, so the kernel range is [0, NR_QOS)
++	 */
++	unsigned int level;
++
++	int qos;
++};
++
++struct qos_policy_data {
++	int nice;
++	int latency_nice;
++	int uclamp_min;
++	int uclamp_max;
++	int rt_sched_priority;
++	int policy;
++};
++
++#define QOS_FLAG_NICE			0x01
++#define QOS_FLAG_LATENCY_NICE		0x02
++#define QOS_FLAG_UCLAMP			0x04
++#define QOS_FLAG_RT			0x08
++
++#define QOS_FLAG_ALL	(QOS_FLAG_NICE			| \
++			 QOS_FLAG_LATENCY_NICE		| \
++			 QOS_FLAG_UCLAMP		| \
++			 QOS_FLAG_RT)
++
++struct qos_policy_datas {
++	/*
++	 * policy_type: id for qos policy, valid from [1, QOS_POLICY_MAX_NR)
++	 * policy_flag: control valid sched attr for policy, QOS_FLAG_ALL for whole access
++	 * policys:     sched params for specific level qos, minus 1 for matching struct in kerenl
++	 */
++	int policy_type;
++	unsigned int policy_flag;
++	struct qos_policy_data policys[NR_QOS];
++};
++
++struct auth_struct;
++
++int qos_apply(struct qos_ctrl_data *data);
++int qos_leave(struct qos_ctrl_data *data);
++int qos_get(struct qos_ctrl_data *data);
++
++void qos_switch(struct auth_struct *auth, int target_status);
++
++void init_task_qos(struct task_struct *p);
++void sched_exit_qos_list(struct task_struct *p);
++void remove_qos_tasks(struct auth_struct *auth);
++
++long do_qos_ctrl_ioctl(int abi, struct file *file, unsigned int cmd, unsigned long arg);
++
++#endif /* _QOS_CTRL_H */
++
+diff --git a/include/linux/sched/rtg_auth.h b/include/linux/sched/rtg_auth.h
+new file mode 100644
+index 000000000..c9326f759
+--- /dev/null
++++ b/include/linux/sched/rtg_auth.h
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * include/linux/sched/rtg_auth.h
++ *
++ * Copyright (c) 2022 Huawei Device Co., Ltd.
++ */
++
++#ifndef _RTG_AUTH_H
++#define _RTG_AUTH_H
++
++#include <linux/sched.h>
++#include <linux/sched/auth_ctrl.h>
++
++/*
++ * RTG authority flags for SYSTEM or ROOT
++ *
++ * keep sync with rtg_sched_cmdid
++ * when add a new cmd to rtg_sched_cmdid
++ * keep new_flag = (old_flag << 1) + 1
++ * up to now, next flag value is 0x3fff
++ */
++#define AF_RTG_ALL		0x1fff
++
++/*
++ * delegated authority for normal uid
++ * trim access range for RTG
++ */
++#define AF_RTG_DELEGATED	0x1fff
++
++bool check_authorized(unsigned int func_id, unsigned int type);
++
++#endif /* _RTG_AUTH_H */
++
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 590fb2fa6..011600b20 100755
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -70,6 +70,13 @@
+ #include <linux/sysfs.h>
+ #include <linux/user_events.h>
+ 
++#ifdef CONFIG_QOS_CTRL
++#include <linux/sched/qos_ctrl.h>
++#endif
++
++#include <linux/uaccess.h>
++#include <asm/unistd.h>
++#include <asm/mmu_context.h>
+ #include <linux/uaccess.h>
+ #include <asm/unistd.h>
+ #include <asm/mmu_context.h>
+@@ -831,6 +838,10 @@ void __noreturn do_exit(long code)
+ 	io_uring_files_cancel();
+ 	exit_signals(tsk);  /* sets PF_EXITING */
+ 
++#ifdef CONFIG_QOS_CTRL
++	sched_exit_qos_list(tsk);
++#endif
++
+ 	trace_android_vh_exit_check(current);
+ 
+ 	/* sync mm's RSS info before statistics gathering */
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 2adea38f9..9c793a8f9 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -37,6 +37,9 @@
+ #include <linux/sched/rseq_api.h>
+ #include <linux/sched/rt.h>
+ 
++#ifdef CONFIG_QOS_CTRL
++#include <linux/sched/qos_ctrl.h>
++#endif
+ #include <linux/blkdev.h>
+ #include <linux/context_tracking.h>
+ #include <linux/cpuset.h>
+@@ -4884,6 +4887,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
+ 
+ 	trace_android_rvh_sched_fork(p);
+ 
++#ifdef CONFIG_QOS_CTRL
++	init_task_qos(p);
++#endif
++
+ 	__sched_fork(clone_flags, p);
+ 	/*
+ 	 * We mark the process as NEW here. This guarantees that
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index cbc478992..2eceb6483 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -5,6 +5,7 @@
+ #ifndef _KERNEL_SCHED_SCHED_H
+ #define _KERNEL_SCHED_SCHED_H
+ 
++#include <linux/sched/cputime.h>
+ #include <linux/sched/affinity.h>
+ #include <linux/sched/autogroup.h>
+ #include <linux/sched/cpufreq.h>
