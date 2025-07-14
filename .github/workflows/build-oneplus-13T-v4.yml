@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v25
+name: OnePlus 13T Build v4
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +10,11 @@ on:
         - Self-Hosted
         - GitHub-Hosted (2-core)
         default: 'Self-Hosted'
+      KSU_META:
+        type: string
+        description: "Branch name/Custom version identifier for SukiSU Ultra (e.g., susfs-main/MyBuild)"
+        required: false
+        default: "susfs-main/Ehsan149"
       KERNEL_NAME:
         description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)"
         required: true
@@ -59,7 +64,7 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 4G
-      FEIL: 'oneplus_13'
+      FEIL: 'oneplus_13t'
       ANDROID_VERSION: 'android15'
       KERNEL_VERSION: '6.6'
     outputs:
@@ -84,6 +89,16 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
+      - name: Create and Enable 3G Swap
+        if: ${{ inputs.RUNNER_TYPE != 'Self-Hosted' }}
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 3G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+          
       - name: Clean additional directories
         if: runner.hosted
         run: |
@@ -151,7 +166,7 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           mkdir kernel_workspace && cd kernel_workspace
           # *** Using SSH instead of HTTPS to bypass network issues ***
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
+          repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -160,12 +175,34 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          META="${{ github.event.inputs.KSU_META }}"
+          BRANCH_NAME="${META%%/*}"
+          CUSTOM_TAG="${META#*/}"
+          echo "Debug: SukiSU Branch Name: $BRANCH_NAME"
+          echo "Debug: SukiSU Custom Tag: $CUSTOM_TAG"
+          echo "CUSTOM_TAG=$CUSTOM_TAG" >> $GITHUB_ENV
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
           cd ./KernelSU
-          KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
-          echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION_VALUE}/" kernel/Makefile
-
+          KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
+            grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+          [[ -z "$KSU_API_VERSION" ]] && KSU_API_VERSION="3.1.7"
+          echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
+          
+          KSU_VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME"
+          echo "KSU_VERSION_FULL=$KSU_VERSION_FULL" >> $GITHUB_ENV
+          
+          sed -i "s|KSU_VERSION_FULL :=.*|KSU_VERSION_FULL := ${KSU_VERSION_FULL}|" kernel/Makefile
+          sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
+          
+          echo "KSU_VERSION_API := $KSU_API_VERSION" >> kernel/Makefile
+          
+          KSUVER_CALCULATED=$(expr $(git rev-list --count main) + 10700)
+          echo "KSUVER=${KSUVER_CALCULATED}" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSUVER_CALCULATED}/" kernel/Makefile
+          echo "::group:: Final Makefile version info preview"
+          grep -A5 "KSU_VERSION_API" kernel/Makefile
+          echo "::endgroup::"
+          
       - name: Set up susfs
         run: |
           set -e
@@ -196,8 +233,6 @@ jobs:
             echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
           fi
           cd ./common
-          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
           patch -p1 -F 3 < syscall_hooks.patch
@@ -277,6 +312,36 @@ jobs:
           fi
           echo "HMBird patch file created."
 
+      
+      - name: Download and Apply auth_qos Patch
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          # Download the raw patch file from brokestar233's commit
+          curl -sSL https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/b405a21a43619d6638588bf91c7453eb0ecd56a1.patch -o auth_qos.patch
+          
+          echo "Attempting to apply auth_qos.patch..."
+          # Apply the patch with --ignore-whitespace and -p1.
+          # -p1 means it strips one leading directory from paths in the patch file.
+          # --directory is crucial to apply the patch from the correct base directory if needed,
+          # but here, running from kernel_platform and stripping p1 should work for common/.
+          patch -p1 --ignore-whitespace < auth_qos.patch
+          echo "auth_qos.patch applied. Checking for success..."
+          
+          # Optional: Verify if the expected files exist or were modified
+          if [ -f "common/kernel/auth_qos/Makefile" ]; then
+              echo "Verification PASSED: common/kernel/auth_qos/Makefile exists."
+          else
+              echo "WARNING: common/kernel/auth_qos/Makefile not found after patch application. This might indicate a problem."
+          fi
+          
+          if grep -q "CONFIG_AUTHORITY_CTRL" common/Kconfig; then
+              echo "Verification PASSED: Kconfig seems to be updated with auth_qos entries."
+          else
+              echo "WARNING: common/Kconfig might not be updated with auth_qos entries. This might indicate a problem."
+          fi
+      
+      
       - name: Add sched_ext (FengChi driver)
         if: ${{ inputs.enable_feature_z == true }}
         run: |
@@ -391,10 +456,16 @@ jobs:
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
-            echo "Main le9uo patch (v5) applied."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
-            echo "workingset_protection enabled by default."
+            # Step 1: Download the patch file directly from the commit URL
+            curl -L -o le9uo.patch "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/a6712b16034e7772b25c9b0de657e829ee1ceb19.patch"
+            # Step 2: Apply the downloaded patch
+            # The patch command will automatically stop the workflow if it fails
+            patch -p1 < le9uo.patch
+            echo "Successfully applied le9uo patch."
+            # patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
+            # echo "Main le9uo patch (v5) applied."
+            # patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
+            # echo "workingset_protection enabled by default."
           fi
 
           if ${{ inputs.enable_adios }}; then
@@ -507,6 +578,16 @@ jobs:
           echo "CONFIG_RAMOOPS_DEFAULT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240" >> "${DEFCONFIG_PATH}"
 
+          # START: New Kconfig entries for auth_qos
+          echo "# Huawei auth_qos" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_AUTHORITY_CTRL=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_QOS_CTRL=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_RTG_AUTHORITY=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_QOS_AUTHORITY=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_AUTH_QOS_DEBUG=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_QOS_POLICY_MAX_NR=20" >> "${DEFCONFIG_PATH}" 
+          # END: New Kconfig entries for auth_qos
+          
           # Add ADIOS config if enabled
           if [ "${{ inputs.enable_adios }}" = "true" ]; then
             echo "Setting ADIOS as default via Kconfig boolean..."
@@ -629,8 +710,11 @@ jobs:
         run: |
          set -e
           cd $GITHUB_WORKSPACE
+          META="${{ github.event.inputs.KSU_META }}"
+          CUSTOM_TAG="${META#*/}"
+          SUKISU_VERSION_INFO="${{ env.KSU_API_VERSION }}_${{ env.KSUVER }}"
           
-          FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
+          FINAL_ZIP_NAME="OnePlus_13T_SuKiSu_GKI_${SUKISU_VERSION_INFO}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
@@ -640,10 +724,14 @@ jobs:
           if ${{ inputs.enable_esim }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
           if ${{ inputs.enable_feature_x }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
-          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip"
           
+          if [ -n "$CUSTOM_TAG" ]; then
+            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_${CUSTOM_TAG,,}"
+          fi  
+          FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g' | sed 's/\.zip$//i')
+          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}.zip"
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
-          echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "zip_artifact_name=${FINAL_ZIP_NAME%.zip}" >> $GITHUB_OUTPUT
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
           rm -rf ./AnyKernel3_Package/.git
           rm -rf ./AnyKernel3_Package/push.sh
@@ -657,14 +745,15 @@ jobs:
           fi
           
           cd AnyKernel3_Package
-          zip -r9 "../${FINAL_ZIP_NAME}" .
-          cd ..
+          
         env:
           KSUVER: ${{ env.KSUVER }}
-
+          KSU_API_VERSION: ${{ env.KSU_API_VERSION }}
+          CUSTOM_TAG: ${{ env.CUSTOM_TAG }}
+          
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.prepare_zip.outputs.zip_filename }}
-          path: ${{ steps.prepare_zip.outputs.zip_filename }}
+          name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
+          path: AnyKernel3_Package/
           

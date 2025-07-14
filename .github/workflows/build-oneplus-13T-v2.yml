@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v25
+name: OnePlus 13t Build v2
 on:
   workflow_dispatch:
     inputs:
@@ -59,7 +59,7 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 4G
-      FEIL: 'oneplus_13'
+      FEIL: 'oneplus_13t'
       ANDROID_VERSION: 'android15'
       KERNEL_VERSION: '6.6'
     outputs:
@@ -151,7 +151,7 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           mkdir kernel_workspace && cd kernel_workspace
           # *** Using SSH instead of HTTPS to bypass network issues ***
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
+          repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -196,8 +196,6 @@ jobs:
             echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
           fi
           cd ./common
-          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
           patch -p1 -F 3 < syscall_hooks.patch
@@ -393,8 +391,8 @@ jobs:
             # Using our final, fixed patch
             patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
             echo "Main le9uo patch (v5) applied."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
-            echo "workingset_protection enabled by default."
+            # patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
+            # echo "workingset_protection enabled by default."
           fi
 
           if ${{ inputs.enable_adios }}; then

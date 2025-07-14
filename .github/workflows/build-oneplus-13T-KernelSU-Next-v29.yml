@@ -1,4 +1,4 @@
-name: OnePlus 13 Build v25
+name: OnePlus 13t KernelSU Next v29
 on:
   workflow_dispatch:
     inputs:
@@ -59,7 +59,7 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 4G
-      FEIL: 'oneplus_13'
+      FEIL: 'oneplus_13t'
       ANDROID_VERSION: 'android15'
       KERNEL_VERSION: '6.6'
     outputs:
@@ -84,6 +84,16 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
+      - name: Create and Enable 3G Swap
+        if: ${{ inputs.RUNNER_TYPE != 'Self-Hosted' }}
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 3G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+          
       - name: Clean additional directories
         if: runner.hosted
         run: |
@@ -103,7 +113,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache
+          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache jq
 
       - name: Restore ccache
         uses: actions/cache@v3
@@ -140,6 +150,9 @@ jobs:
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
           echo "Repo tool installed from mirror."
+          # Clone patch repositories for KernelSU and SUSFS integration
+          git clone https://github.com/WildKernels/kernel_patches.git ${{github.workspace}}/kernel_patches --depth=1
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git ${{github.workspace}}/susfs4ksu
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -151,58 +164,140 @@ jobs:
           which repo || (echo "ERROR: 'which repo' did not find repo in PATH after Install repo tool step." && exit 1)
           mkdir kernel_workspace && cd kernel_workspace
           # *** Using SSH instead of HTTPS to bypass network issues ***
-          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
+          repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${{ env.FEIL }}.xml --depth=1
           repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
-      - name: Set up SukiSU
+      - name: Set up KernelSU Next
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
-          cd ./KernelSU
-          KSU_VERSION_VALUE=$(expr $(git rev-list --count main) + 10700)
-          echo "KSUVER=${KSU_VERSION_VALUE}" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION_VALUE}/" kernel/Makefile
+          echo "Adding KernelSU Next..."
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          git submodule update --init --recursive
 
-      - name: Set up susfs
+          # Calculate KSU_VERSION
+          cd ./KernelSU-Next/kernel
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) + 10200)
+          sed -i "s/DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" Makefile
+          cd .. 
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          echo "KernelSU Next version set to ${KSU_VERSION}"
+          
+      - name: Set up susfs for KernelSU Next
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          SUSFS_CLONE_TARGET_REL="../susfs4ksu"
-          SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
-          SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
-          if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
-          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
-          if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
-          PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch"
-          EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
-          if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
-            echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+          SUSFS_BRANCH="gki-android15-6.6"
+          echo "Applying SUSFS patches using branch: $SUSFS_BRANCH..."
+          # Checkout correct SUSFS branch in the globally cloned susfs4ksu repo
+          # This ensures we get the correct base SUSFS files and specific patches from it.
+          cd ${{github.workspace}}/susfs4ksu
+          if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
+            git checkout "$SUSFS_BRANCH"
+          else
+            echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu. Please check the branch name."
             exit 1
           fi
-          cp "${EXPECTED_PATCH_PATH}" ./common/
-          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
-          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
-          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
-          if ! ${{ inputs.enable_feature_y }}; then
-            echo "LZ4KD is disabled, copying lz4k_oplus."
-            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
-          else
-            echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
-          fi
-          cd ./common
-          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
-          patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
-          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
-          patch -p1 -F 3 < syscall_hooks.patch
-          echo "Finished 'Set up susfs' step."
+          # Go back to kernel_platform directory where the source code is
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          
+          # Copy SUSFS base files and main addition patch from the checked out susfs4ksu branch
+          echo "INFO: Copying SUSFS base files and main addition patch..."
+          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
+          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
+          # Navigate into the KernelSU-Next directory to apply its specific SUSFS patches
+          cd ./KernelSU-Next
+          echo "Applying next SUSFS patches to KernelSU-Next source..."
+          # Get SUSFS version from header file (ensure susfs.h is copied correctly above in common)
+          susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
+          echo "SUSVER=$susfs_version" >> $GITHUB_ENV
+          echo "SusFS Version: $susfs_version"
+
+          # Apply main SUSFS enablement patch for KernelSU-Next based on reference workflow's logic
+          # The 10_enable_susfs_for_ksu.patch is usually located INSIDE susfs4ksu repo's KernelSU folder
+          case "$susfs_version" in
+            "v1.5.5"|"v1.5.6"|"v1.5.7")
+              MAIN_KSUN_SUSFS_PATCH="../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch"
+              if [ -f "$MAIN_KSUN_SUSFS_PATCH" ]; then
+                cp "$MAIN_KSUN_SUSFS_PATCH" "./ksun_susfs_latest.patch"
+                patch -p1 --forward --fuzz=3 < ./ksun_susfs_latest.patch || echo "WARN: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 failed or applied with issues."
+              else
+                echo "ERROR: Main ksun_susfs_latest.patch for v1.5.5-v1.5.7 not found at $MAIN_KSUN_SUSFS_PATCH. Aborting."
+                exit 1
+              fi
+              ;;
+            "v1.5.8"|"v1.5.9") # Grouping v1.5.9 with v1.5.8 as per the reference action.yml
+              # Main enablement patch for these versions is handled via susfs4ksu's internal KernelSU patches
+              ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" 
+              if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
+                cp "$ENABLE_KSU_SUSFS_PATCH" ./
+                # Increase fuzz to 5 to handle potential minor mismatches in core_hook.c, etc.
+                patch -p1 --forward --fuzz=5 < 10_enable_susfs_for_ksu.patch || { echo "ERROR: 10_enable_susfs_for_ksu.patch failed or applied with critical issues. This patch is essential. Aborting."; exit 1; }
+              else
+                echo "ERROR: 10_enable_susfs_for_ksu.patch not found at $ENABLE_KSU_SUSFS_PATCH. This is critical! Aborting."
+                exit 1
+              fi
+              
+              # Then apply individual fix patches from WildKernels/kernel_patches
+              # These are separate from the main enablement patch and may still be needed.
+              SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # Path to WildKernels fix patches
+              
+              FIX_PATCHES=(
+                "fix_apk_sign.c.patch"
+                "fix_core_hook.c.patch"
+                "fix_ksud.c.patch"
+                "fix_rules.c.patch"
+                "fix_selinux.c.patch"
+              )
+              
+              for patch_file in "${FIX_PATCHES[@]}"; do
+                if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
+                  cp "${SUSFS_FIX_PATH}/${patch_file}" ./
+                  patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
+                else
+                  echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping." # These WARNs are acceptable if the files genuinely don't exist
+                fi
+              done
+              ;;
+            *)
+              echo "ERROR: Invalid or unsupported SusFS version: $susfs_version. Aborting build."
+              exit 1
+              ;;
+          esac
+
+          # Go back to the 'common' directory within kernel_platform
+          cd ../common 
+          
+          echo "INFO: Applying final SUSFS kernel source patches..."
+          # Specific include fix for android15-6.6
+          # This adds #include <trace/hooks/fs.h> to fs/namespace.c
+          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
+              sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
+              echo "Added #include <trace/hooks/fs.h> to fs/namespace.c"
+          else
+              echo "Line '#include <trace/hooks/fs.h>' already present in fs/namespace.c. Skipping insert."
+          fi
+
+          # Your main SUSFS addition patch (e.g., 50_add_susfs_in_gki-android15-6.6.patch)
+          # This patch is from susfs4ksu/kernel_patches/
+          patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || echo "WARN: 50_add_susfs_in_gki patch failed or applied with issues."
+          
+          echo "Finished setting up susfs for KernelSU Next."
+
+      - name: Upload Patch Rejects for Debugging
+        if: failure() # Only upload if the previous step failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: susfs-patch-rejects
+          path: |
+            kernel_workspace/kernel_platform/KernelSU-Next/*.rej
+            kernel_workspace/kernel_platform/common/*.rej
+          retention-days: 5 # Keep for 5 days for debugging
+      
       - name: Apply HMBird GKI patch
         run: |
           set -e
@@ -391,10 +486,16 @@ jobs:
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
-            echo "Main le9uo patch (v5) applied."
-            patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
-            echo "workingset_protection enabled by default."
+            # Step 1: Download the patch file directly from the commit URL
+            curl -L -o le9uo.patch "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/a6712b16034e7772b25c9b0de657e829ee1ceb19.patch"
+            # Step 2: Apply the downloaded patch
+            # The patch command will automatically stop the workflow if it fails
+            patch -p1 < le9uo.patch
+            echo "Successfully applied le9uo patch."
+            # patch -p1 -F 3 < $GITHUB_WORKSPACE/le9uo-final-v5.patch
+            # echo "Main le9uo patch (v5) applied."
+            # patch -p1 -F 3 < $GITHUB_WORKSPACE/0002-vm.workingset_protection-On-by-default.patch
+            # echo "workingset_protection enabled by default."
           fi
 
           if ${{ inputs.enable_adios }}; then
@@ -434,17 +535,17 @@ jobs:
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >>  "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_KPROBES_HOOK=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
@@ -572,7 +673,7 @@ jobs:
           echo "CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
           echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\""
           
-          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
+          sudo sed -i '2s/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -m "Update defconfig with all features and custom settings" --allow-empty || echo "No defconfig changes to commit."
 
@@ -629,8 +730,8 @@ jobs:
         run: |
          set -e
           cd $GITHUB_WORKSPACE
-          
-          FINAL_ZIP_NAME="SuKiSu_GKI_${KSUVER}_${{ env.FEIL }}"
+                            
+          FINAL_ZIP_NAME="OnePlus_13_KSUNext_GKI_${{ env.KSUVER }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
@@ -640,10 +741,11 @@ jobs:
           if ${{ inputs.enable_esim }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
           if ${{ inputs.enable_feature_x }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
-          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ehsan149.zip"
-          
+                      
+          FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g' | sed 's/\.zip$//i')
+          FINAL_ZIP_NAME="${FINAL_ZIP_NAME}.zip"
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
-          echo "zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "zip_artifact_name=${FINAL_ZIP_NAME%.zip}" >> $GITHUB_OUTPUT
           git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1
           rm -rf ./AnyKernel3_Package/.git
           rm -rf ./AnyKernel3_Package/push.sh
@@ -657,14 +759,37 @@ jobs:
           fi
           
           cd AnyKernel3_Package
-          zip -r9 "../${FINAL_ZIP_NAME}" .
-          cd ..
+          
         env:
           KSUVER: ${{ env.KSUVER }}
-
+          
+      - name: Download and Add Pre-built SUSFS Module
+        run: |
+          echo "INFO: Downloading latest pre-built susfs module..."
+          LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
+            jq -r '.workflow_runs[] | select(.head_branch == "v1.5.2+") | .id' | head -n 1)
+          
+          if [ -z "$LATEST_RUN_ID" ]; then
+            echo "WARN: No successful pre-built susfs module found. Skipping."
+          else
+            ARTIFACT_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$LATEST_RUN_ID/artifacts" | \
+              jq -r '.artifacts[0].archive_download_url')
+          
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo "INFO: Found artifact. Downloading..."
+              curl -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -o ksu_module_susfs.zip "$ARTIFACT_URL"
+             
+              cp ksu_module_susfs.zip ./AnyKernel3_Package/
+              echo "INFO: SUSFS module added to the package successfully."
+            else
+              echo "WARN: Failed to get artifact URL for susfs module."
+            fi
+          fi    
+          
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.prepare_zip.outputs.zip_filename }}
-          path: ${{ steps.prepare_zip.outputs.zip_filename }}
-          
+          name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
+          path: AnyKernel3_Package/
