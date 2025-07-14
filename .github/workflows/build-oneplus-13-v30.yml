@@ -179,7 +179,7 @@ jobs:
           
           echo "Applying auth_qos_manual_full.patch from your repository..."
           
-          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual.patch
+          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual2.patch
           echo "auth_qos_manual_full.patch applied successfully."
       
       - name: Set up SukiSU
