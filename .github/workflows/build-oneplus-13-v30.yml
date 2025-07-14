@@ -111,18 +111,6 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Apply auth_qos Patch
-        run: |
-          set -e
-          # Ensure we are in the base directory of kernel_platform for patching
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          
-          echo "Applying auth_qos_manual_full.patch from your repository..."
-          
-          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual_full.patch
-          echo "auth_qos_manual_full.patch applied successfully."
-      
-      
       - name: Configure Git
         run: |
           git config --global user.name "ehsan149"
@@ -183,6 +171,17 @@ jobs:
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
+      - name: Apply auth_qos Patch
+        run: |
+          set -e
+          # Ensure we are in the base directory of kernel_platform for patching
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          
+          echo "Applying auth_qos_manual_full.patch from your repository..."
+          
+          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual_full.patch
+          echo "auth_qos_manual_full.patch applied successfully."
+      
       - name: Set up SukiSU
         run: |
           set -e
