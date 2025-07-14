@@ -171,6 +171,17 @@ jobs:
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
+      - name: Apply auth_qos Patch
+        run: |
+          set -e
+          # Ensure we are in the base directory of kernel_platform for patching
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          
+          echo "Applying auth_qos_manual.patch from your repository..."
+          
+          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual4.patch
+          echo "auth_qos_manual_full.patch applied successfully."
+      
       - name: Set up SukiSU
         run: |
           set -e
@@ -310,38 +321,6 @@ jobs:
           if ! grep -q "hmbird_patch.o" Makefile; then
             echo "obj-y += hmbird_patch.o" >> Makefile
           fi
-          echo "HMBird patch file created."
-
-      
-      - name: Download and Apply auth_qos Patch
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          # Download the raw patch file from brokestar233's commit
-          curl -sSL https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/b405a21a43619d6638588bf91c7453eb0ecd56a1.patch -o auth_qos.patch
-          
-          echo "Attempting to apply auth_qos.patch..."
-          # Apply the patch with --ignore-whitespace and -p1.
-          # -p1 means it strips one leading directory from paths in the patch file.
-          # --directory is crucial to apply the patch from the correct base directory if needed,
-          # but here, running from kernel_platform and stripping p1 should work for common/.
-          patch -p1 --ignore-whitespace < auth_qos.patch
-          echo "auth_qos.patch applied. Checking for success..."
-          
-          # Optional: Verify if the expected files exist or were modified
-          if [ -f "common/kernel/auth_qos/Makefile" ]; then
-              echo "Verification PASSED: common/kernel/auth_qos/Makefile exists."
-          else
-              echo "WARNING: common/kernel/auth_qos/Makefile not found after patch application. This might indicate a problem."
-          fi
-          
-          if grep -q "CONFIG_AUTHORITY_CTRL" common/Kconfig; then
-              echo "Verification PASSED: Kconfig seems to be updated with auth_qos entries."
-          else
-              echo "WARNING: common/Kconfig might not be updated with auth_qos entries. This might indicate a problem."
-          fi
-      
-      
       - name: Add sched_ext (FengChi driver)
         if: ${{ inputs.enable_feature_z == true }}
         run: |
@@ -586,6 +565,12 @@ jobs:
           echo "CONFIG_QOS_AUTHORITY=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_AUTH_QOS_DEBUG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_QOS_POLICY_MAX_NR=20" >> "${DEFCONFIG_PATH}" 
+          # Add dependencies for QoS features (latency and provisioning)
+          echo "# QoS feature dependencies" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_SCHED_LATENCY_NICE=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_TASK=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_BUCKETS_COUNT=20" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_TASK_GROUP=y" >> "${DEFCONFIG_PATH}"
           # END: New Kconfig entries for auth_qos
           
           # Add ADIOS config if enabled
