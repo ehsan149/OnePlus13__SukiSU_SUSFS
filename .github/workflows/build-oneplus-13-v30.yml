@@ -179,7 +179,7 @@ jobs:
           
           echo "Applying auth_qos_manual_full.patch from your repository..."
           
-          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual2.patch
+          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual3.patch
           echo "auth_qos_manual_full.patch applied successfully."
       
       - name: Set up SukiSU
@@ -563,6 +563,13 @@ jobs:
           echo "CONFIG_QOS_AUTHORITY=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_AUTH_QOS_DEBUG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_QOS_POLICY_MAX_NR=20" >> "${DEFCONFIG_PATH}" 
+                   
+          # Add dependencies for QoS features (latency and provisioning)
+          echo "# QoS feature dependencies" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_SCHED_LATENCY_NICE=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_TASK=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_BUCKETS_COUNT=20" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_TASK_GROUP=y" >> "${DEFCONFIG_PATH}"
           # END: New Kconfig entries for auth_qos
           
           # Add ADIOS config if enabled
