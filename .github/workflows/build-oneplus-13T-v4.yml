@@ -714,7 +714,7 @@ jobs:
           CUSTOM_TAG="${META#*/}"
           SUKISU_VERSION_INFO="${{ env.KSU_API_VERSION }}_${{ env.KSUVER }}"
           
-          FINAL_ZIP_NAME="OnePlus_13_SuKiSu_GKI_${SUKISU_VERSION_INFO}"
+          FINAL_ZIP_NAME="OnePlus_13T_SuKiSu_GKI_${SUKISU_VERSION_INFO}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
