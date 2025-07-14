@@ -175,7 +175,7 @@ jobs:
         run: |
           set -e
           # Ensure we are in the base directory of kernel_platform for patching
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           
           echo "Applying auth_qos_manual_full.patch from your repository..."
           
