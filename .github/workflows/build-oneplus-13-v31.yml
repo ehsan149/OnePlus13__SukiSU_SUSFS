@@ -758,35 +758,20 @@ jobs:
 
       - name: Find, Copy, and Upload Kernel Config
         run: |
-          # Step 1: Create a simple, predictable directory for the artifact.
+          # Create a dedicated directory inside the workspace
           ARTIFACT_DIR="${{ github.workspace }}/config_artifact"
           mkdir -p "$ARTIFACT_DIR"
-          echo "Created artifact directory at $ARTIFACT_DIR"
 
-          # Step 2: Find the source .config file.
-          echo "Searching for .config file..."
+          # Find the .config file
           CONFIG_PATH=$(find "${{ github.workspace }}/kernel_workspace/kernel_platform/out" -type f -name ".config" | head -n 1)
-
-          # Step 3: Check if the file was found, then copy and verify.
+          
           if [[ -f "$CONFIG_PATH" ]]; then
-            echo "SUCCESS: Found .config at: $CONFIG_PATH"
-            
-            echo "Attempting to copy file..."
+            echo "Found .config at: $CONFIG_PATH"
             cp "$CONFIG_PATH" "$ARTIFACT_DIR/.config"
-            
-            # Step 4: CRITICAL VERIFICATION - List the contents of the artifact directory to prove the file is there.
             echo "Verifying copy... Contents of $ARTIFACT_DIR:"
             ls -la "$ARTIFACT_DIR"
-            
-            # Step 5: Final check before finishing the step.
-            if [[ -f "$ARTIFACT_DIR/.config" ]]; then
-              echo "VERIFICATION SUCCESS: .config file is confirmed in artifact directory."
-            else
-              echo "VERIFICATION FAILED: Copy command did not create the file."
-              exit 1
-            fi
           else
-            echo "ERROR: .config file not found in build output!"
+            echo "ERROR: .config file not found!"
             exit 1
           fi
 
