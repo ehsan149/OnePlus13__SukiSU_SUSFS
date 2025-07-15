@@ -182,6 +182,18 @@ jobs:
           patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual4.patch
           echo "auth_qos_manual_full.patch applied successfully."
       
+      - name: Modify auth_qos Kconfig to remove RTG dependency
+        run: |
+          echo "Removing SCHED_RTG_FRAME dependency from auth_qos Kconfig..."
+          AUTH_KCONFIG_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers/auth_ctl/Kconfig"
+
+          if [ -f "$AUTH_KCONFIG_PATH" ]; then
+            sed -i '/depends on SCHED_RTG_FRAME/d' "$AUTH_KCONFIG_PATH"
+            echo "Dependency removed successfully."
+          else
+            echo "WARN: auth_ctl/Kconfig not found, skipping dependency removal."
+          fi
+      
       - name: Set up SukiSU
         run: |
           set -e
