@@ -758,19 +758,35 @@ jobs:
 
       - name: Find, Copy, and Upload Kernel Config
         run: |
-          # Create a dedicated, simple directory for our artifact
-          mkdir -p ${{ github.workspace }}/config_artifact
+          # Step 1: Create a simple, predictable directory for the artifact.
+          ARTIFACT_DIR="${{ github.workspace }}/config_artifact"
+          mkdir -p "$ARTIFACT_DIR"
+          echo "Created artifact directory at $ARTIFACT_DIR"
 
-          # Find the .config file within the build output directories
-          config_path=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
-          
-          # Check if the file was found and then copy it
-          if [[ -f "$config_path" ]]; then
-            echo "Found .config at: $config_path"
-            echo "Copying to artifact directory..."
-            cp "$config_path" ${{ github.workspace }}/config_artifact/
+          # Step 2: Find the source .config file.
+          echo "Searching for .config file..."
+          CONFIG_PATH=$(find "${{ github.workspace }}/kernel_workspace/kernel_platform/out" -type f -name ".config" | head -n 1)
+
+          # Step 3: Check if the file was found, then copy and verify.
+          if [[ -f "$CONFIG_PATH" ]]; then
+            echo "SUCCESS: Found .config at: $CONFIG_PATH"
+            
+            echo "Attempting to copy file..."
+            cp "$CONFIG_PATH" "$ARTIFACT_DIR/.config"
+            
+            # Step 4: CRITICAL VERIFICATION - List the contents of the artifact directory to prove the file is there.
+            echo "Verifying copy... Contents of $ARTIFACT_DIR:"
+            ls -la "$ARTIFACT_DIR"
+            
+            # Step 5: Final check before finishing the step.
+            if [[ -f "$ARTIFACT_DIR/.config" ]]; then
+              echo "VERIFICATION SUCCESS: .config file is confirmed in artifact directory."
+            else
+              echo "VERIFICATION FAILED: Copy command did not create the file."
+              exit 1
+            fi
           else
-            echo "ERROR: .config file not found!"
+            echo "ERROR: .config file not found in build output!"
             exit 1
           fi
 
@@ -780,10 +796,10 @@ jobs:
           name: kernel_config
           path: ${{ github.workspace }}/config_artifact/
 
-      - name: Clean up build artifacts to save space
-        run: |
-          echo "Cleaning up large build directories..."
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
-          df -h
+      # - name: Clean up build artifacts to save space
+        # run: |
+          # echo "Cleaning up large build directories..."
+          # rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
+          # rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
+          # df -h
           
