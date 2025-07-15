@@ -263,14 +263,9 @@ jobs:
             echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
           fi
           cd ./common
-          if ! grep -qr 'common-modules/trusty' "$GITHUB_WORKSPACE/kernel_workspace/.repo/manifests"; then
-            echo "Trusty OS modules not found in kernel source manifest."
-            echo "Applying compatibility fix to susfs patch..."
-            sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
-            sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
-          else
-            echo "Trusty OS modules found. No patch modification needed."
-          fi  
+          echo "Applying compatibility fix to susfs patch..."
+          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
           patch -p1 -F 3 < syscall_hooks.patch
