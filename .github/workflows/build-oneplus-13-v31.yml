@@ -688,12 +688,7 @@ jobs:
             echo "Ccache statistics after build:"
             ccache -s
 
-      - name: Clean up build artifacts to save space
-        run: |
-          echo "Cleaning up large build directories..."
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
-          df -h
+      
           
       - name: Make AnyKernel3 (Patch Image)
         run: |
@@ -779,4 +774,11 @@ jobs:
         with:
           name: kernel_config
           path: ${{ steps.find_config.outputs.config_path }}
+
+      - name: Clean up build artifacts to save space
+        run: |
+          echo "Cleaning up large build directories..."
+          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
+          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
+          df -h
           
