@@ -756,24 +756,29 @@ jobs:
           name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
           path: AnyKernel3_Package/
 
-      - name: Find and Upload Final Kernel Config
-        id: find_config
+      - name: Find, Copy, and Upload Kernel Config
         run: |
+          # Create a dedicated, simple directory for our artifact
+          mkdir -p ${{ github.workspace }}/config_artifact
+
           # Find the .config file within the build output directories
           config_path=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
+          
+          # Check if the file was found and then copy it
           if [[ -f "$config_path" ]]; then
             echo "Found .config at: $config_path"
-            echo "config_path=$config_path" >> $GITHUB_OUTPUT
+            echo "Copying to artifact directory..."
+            cp "$config_path" ${{ github.workspace }}/config_artifact/
           else
             echo "ERROR: .config file not found!"
             exit 1
           fi
-      
+
       - name: Upload Config Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kernel_config
-          path: ${{ steps.find_config.outputs.config_path }}
+          path: ${{ github.workspace }}/config_artifact/
 
       - name: Clean up build artifacts to save space
         run: |
