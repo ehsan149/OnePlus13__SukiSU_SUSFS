@@ -589,7 +589,6 @@ jobs:
 
 
           # Enable the core dependency for RTG Authority
-          echo "CONFIG_SCHED_RTG_FRAME=y" >> "${DEFCONFIG_PATH}"
           # START: New Kconfig entries for auth_qos
           echo "# Huawei auth_qos" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_AUTHORITY_CTRL=y" >> "${DEFCONFIG_PATH}"
@@ -601,7 +600,6 @@ jobs:
                    
           # Add dependencies for QoS features (latency and provisioning)
           echo "# QoS feature dependencies" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_SCHED_LATENCY_NICE=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_UCLAMP_TASK=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_UCLAMP_BUCKETS_COUNT=20" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_UCLAMP_TASK_GROUP=y" >> "${DEFCONFIG_PATH}"
@@ -771,24 +769,24 @@ jobs:
           name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
           path: AnyKernel3_Package/
 
-      - name: Display Final Kernel Config
-        run: |
-          echo "Finding and displaying the final .config file..."
-          CONFIG_PATH=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
-          
-          if [[ -f "$CONFIG_PATH" ]]; then
-            echo "--- START OF KERNEL CONFIG ---"
-            cat "$CONFIG_PATH"
-            echo "--- END OF KERNEL CONFIG ---"
-          else
-            echo "ERROR: .config file not found!"
-            exit 1
-          fi
-
-      # - name: Clean up build artifacts to save space
+      # - name: Display Final Kernel Config
         # run: |
-          # echo "Cleaning up large build directories..."
-          # rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
-          # rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
-          # df -h
+          # echo "Finding and displaying the final .config file..."
+          # CONFIG_PATH=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
           
+          # if [[ -f "$CONFIG_PATH" ]]; then
+            # echo "--- START OF KERNEL CONFIG ---"
+            # cat "$CONFIG_PATH"
+            # echo "--- END OF KERNEL CONFIG ---"
+          # else
+            # echo "ERROR: .config file not found!"
+            # exit 1
+          # fi
+
+      - name: Clean up build artifacts to save space
+        run: |
+           echo "Cleaning up large build directories..."
+           rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
+           rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
+           df -h
+           
