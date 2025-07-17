@@ -504,12 +504,37 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           curl -L -o kcompressd.patch "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/35abaa9b1b0c084f9cfee3696d51b9a50d0d57be.patch"
           
-          # Add this line to fix the compilation error
+          # Fix MTHP_STAT_ZSWPOUT error
           sed -i 's/MTHP_STAT_ZSWPOUT/MTHP_STAT_SWPOUT/g' kcompressd.patch 
           
+          # Fix undeclared function errors for zswap and mem_cgroup
+          # Add necessary includes to mm/page_io.c within the patch itself
+          # This might be tricky, as you're editing a patch file.
+          # You need to find the section in the patch that modifies mm/page_io.c
+          # and insert the include directives there.
+          # A safer approach might be to patch the mm/page_io.c directly after applying the main patch.
+          
+          # Let's try to add a separate sed command to insert includes directly into the file after patching
           patch -p1 < kcompressd.patch
           echo "Successfully applied Kcompressd-Unofficial patch."
+
+          # Add new step after Apply Kcompressd-Unofficial Patch to insert includes if needed
           
+      - name: Fix Kcompressd includes in mm/page_io.c
+        if: ${{ env.ENABLE_KCOMPRESSD == 'true' }} 
+        run: |
+          set -e
+          echo "Adding missing includes for Kcompressd in mm/page_io.c"
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          # Assuming the functions are declared in these headers. You might need to verify the exact headers.
+          # Check kernel/include/linux/swap.h and mm/zswap.c for relevant definitions.
+          # It's likely linux/swap.h contains zswap_is_enabled.
+          # For mem_cgroup_zswap_writeback_enabled, it's likely in linux/memremap.h or linux/memcontrol.h
+          # Let's start with linux/swap.h
+          sed -i '/#include <linux\/page_ext.h>/a #include <linux/swap.h>' mm/page_io.c
+          sed -i '/#include <linux\/swap.h>/a #include <linux/memcontrol.h>' mm/page_io.c # or linux/memremap.h
+          echo "Missing includes added to mm/page_io.c"
+      
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
@@ -648,6 +673,12 @@ jobs:
             echo "# Kcompressd-Unofficial" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_KCOMPRESSD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_SWAP_ASYNC_IO=y" >> "${DEFCONFIG_PATH}"
+            # Add Zswap and MemCG related Kconfigs here
+            echo "CONFIG_ZSWAP=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_ZPOOL=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_CGROUP_MEM_RES_CTLR=y" >> "${DEFCONFIG_PATH}" # This is for memory cgroup controller
+            echo "CONFIG_MEMCG_SWAP=y" >> "${DEFCONFIG_PATH}" # Enable swap support for memory cgroups
+            echo "CONFIG_MEMCG_KMEM=y" >> "${DEFCONFIG_PATH}" # Enable kernel memory accounting for memory cgroups
             echo "Kcompressd-Unofficial is now enabled."
           fi
 
