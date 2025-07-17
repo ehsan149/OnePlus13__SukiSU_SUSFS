@@ -503,6 +503,10 @@ jobs:
           echo "Applying Kcompressd-Unofficial patch from brokestar233..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
           curl -L -o kcompressd.patch "https://github.com/brokestar233/android_kernel_common_oneplus_sm8750/commit/35abaa9b1b0c084f9cfee3696d51b9a50d0d57be.patch"
+          
+          # Add this line to fix the compilation error
+          sed -i 's/MTHP_STAT_ZSWPOUT/MTHP_STAT_SWPOUT/g' kcompressd.patch 
+          
           patch -p1 < kcompressd.patch
           echo "Successfully applied Kcompressd-Unofficial patch."
           
