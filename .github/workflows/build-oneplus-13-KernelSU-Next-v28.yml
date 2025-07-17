@@ -175,7 +175,7 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || { #
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v0.9.5" || { #
             echo "::error::Failed to clone or set up KernelSU-Next"
             exit 1
           }
