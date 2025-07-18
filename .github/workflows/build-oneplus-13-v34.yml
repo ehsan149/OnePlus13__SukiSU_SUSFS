@@ -502,7 +502,7 @@ jobs:
           set -e
           echo "Applying Kcompressd manual patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          patch -p1 < $GITHUB_WORKSPACE/kcompressd_manual.patch
+          patch -p1 < $GITHUB_WORKSPACE/kcompressd_manual2.patch
           echo "Successfully applied Kcompressd manual patch."
           
       - name: Add Kernel Configuration Settings and Custom Kernel Name
