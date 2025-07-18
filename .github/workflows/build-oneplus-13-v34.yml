@@ -808,10 +808,10 @@ jobs:
             exit 1
           fi
 
-      - name: Clean up build artifacts to save space
-        run: |
-           echo "Cleaning up large build directories..."
-           rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
-           rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
-           df -h
+      # - name: Clean up build artifacts to save space
+        # run: |
+           # echo "Cleaning up large build directories..."
+           # rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
+           # rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
+           # df -h
            
