@@ -26,7 +26,7 @@ on:
       OPTIONAL_FEATURES:
         description: 'Comma-separated list of optional features (e.g., ADIOS,LE9UO,LZ4KD,FENGCHI,ESIM,KPM,KCOMPRESSD)'
         required: false
-        default: 'ADIOS,LE9UO,FENGCHI,ESIM' 
+        default: 'ADIOS,LE9UO,FENGCHI,ESIM,KCOMPRESSD' 
         type: string
 
 jobs:
@@ -56,7 +56,7 @@ jobs:
           echo "ENABLE_LZ4KD=$(echo $OPT_FEATURES | grep -qi 'LZ4KD' && echo 'true' || echo 'false')" >> $GITHUB_ENV
           echo "ENABLE_FENGCHI=$(echo $OPT_FEATURES | grep -qi 'FENGCHI' && echo 'true' || echo 'false')" >> $GITHUB_ENV
           echo "ENABLE_ESIM=$(echo $OPT_FEATURES | grep -qi 'ESIM' && echo 'true' || echo 'false')" >> $GITHUB_ENV
-          # echo "ENABLE_KCOMPRESSD=$(echo $OPT_FEATURES | grep -qi 'KCOMPRESSD' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          echo "ENABLE_KCOMPRESSD=$(echo $OPT_FEATURES | grep -qi 'KCOMPRESSD' && echo 'true' || echo 'false')" >> $GITHUB_ENV
       
       - name: Install LVM2 for maximize-build-space
         if: ${{ inputs.RUNNER_TYPE != 'Self-Hosted' }}
@@ -496,7 +496,15 @@ jobs:
           echo " ADIOS patch successfully verified."
 
 
-            
+      - name: Apply Kcompressd Manual Patch
+        if: ${{ env.ENABLE_KCOMPRESSD == 'true' }}
+        run: |
+          set -e
+          echo "Applying Kcompressd manual patch..."
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          patch -p1 < $GITHUB_WORKSPACE/kcompressd_manual.patch
+          echo "Successfully applied Kcompressd manual patch."
+          
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
@@ -631,18 +639,18 @@ jobs:
             echo "CONFIG_AUTOFDO_CLANG=y" >> "${DEFCONFIG_PATH}"
             
           # Add Kcompressd-Unofficial config if enabled
-          # if [ "${{ env.ENABLE_KCOMPRESSD }}" = "true" ]; then
-            # echo "# Kcompressd-Unofficial" >> "${DEFCONFIG_PATH}"
-            # echo "CONFIG_KCOMPRESSD=y" >> "${DEFCONFIG_PATH}"
-            # echo "CONFIG_SWAP_ASYNC_IO=y" >> "${DEFCONFIG_PATH}"
+           if [ "${{ env.ENABLE_KCOMPRESSD }}" = "true" ]; then
+             echo "# Kcompressd-Unofficial" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_KCOMPRESSD=y" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_SWAP_ASYNC_IO=y" >> "${DEFCONFIG_PATH}"
             # Add Zswap and MemCG related Kconfigs here
-            # echo "CONFIG_ZSWAP=y" >> "${DEFCONFIG_PATH}"
-            # echo "CONFIG_ZPOOL=y" >> "${DEFCONFIG_PATH}"
-            # echo "CONFIG_CGROUP_MEM_RES_CTLR=y" >> "${DEFCONFIG_PATH}" # This is for memory cgroup controller
-            # echo "CONFIG_MEMCG_SWAP=y" >> "${DEFCONFIG_PATH}" # Enable swap support for memory cgroups
-            # echo "CONFIG_MEMCG_KMEM=y" >> "${DEFCONFIG_PATH}" # Enable kernel memory accounting for memory cgroups
-            # echo "Kcompressd-Unofficial is now enabled."
-          # fi
+             echo "CONFIG_ZSWAP=y" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_ZPOOL=y" >> "${DEFCONFIG_PATH}"
+             echo "CONFIG_CGROUP_MEM_RES_CTLR=y" >> "${DEFCONFIG_PATH}" # This is for memory cgroup controller
+             echo "CONFIG_MEMCG_SWAP=y" >> "${DEFCONFIG_PATH}" # Enable swap support for memory cgroups
+             echo "CONFIG_MEMCG_KMEM=y" >> "${DEFCONFIG_PATH}" # Enable kernel memory accounting for memory cgroups
+             echo "Kcompressd-Unofficial is now enabled."
+           fi
 
           
           # Add KPM config if enabled
@@ -742,7 +750,7 @@ jobs:
           if ${{ env.ENABLE_ESIM }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
           if ${{ env.ENABLE_KPM }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
-          # if ${{ env.ENABLE_KCOMPRESSD }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KCOMPRESSD"; fi
+          if ${{ env.ENABLE_KCOMPRESSD }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KCOMPRESSD"; fi
           
           if [ -n "$CUSTOM_TAG" ]; then
             FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_${CUSTOM_TAG,,}"
