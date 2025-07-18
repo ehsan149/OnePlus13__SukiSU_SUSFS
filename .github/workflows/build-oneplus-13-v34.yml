@@ -640,16 +640,26 @@ jobs:
             
           # Add Kcompressd-Unofficial config if enabled
            if [ "${{ env.ENABLE_KCOMPRESSD }}" = "true" ]; then
-             echo "# Kcompressd-Unofficial" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_KCOMPRESSD=y" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_SWAP_ASYNC_IO=y" >> "${DEFCONFIG_PATH}"
-            # Add Zswap and MemCG related Kconfigs here
-             echo "CONFIG_ZSWAP=y" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_ZPOOL=y" >> "${DEFCONFIG_PATH}"
-             echo "CONFIG_CGROUP_MEM_RES_CTLR=y" >> "${DEFCONFIG_PATH}" # This is for memory cgroup controller
-             echo "CONFIG_MEMCG_SWAP=y" >> "${DEFCONFIG_PATH}" # Enable swap support for memory cgroups
-             echo "CONFIG_MEMCG_KMEM=y" >> "${DEFCONFIG_PATH}" # Enable kernel memory accounting for memory cgroups
-             echo "Kcompressd-Unofficial is now enabled."
+            echo "# Kcompressd-Unofficial" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_KCOMPRESSD=y" >> "${DEFCONFIG_PATH}"
+            echo "CONFIG_SWAP_ASYNC_IO=y" >> "${DEFCONFIG_PATH}"
+            # Ensure ZSWAP related configs are also enabled, as kcompressd relies on them
+            sed -i '/CONFIG_ZSWAP/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_ZSWAP=y" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_ZPOOL/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_ZPOOL=y" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_CGROUP_MEM_RES_CTLR/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_CGROUP_MEM_RES_CTLR=y" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_MEMCG_SWAP/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_MEMCG_SWAP=y" >> "${DEFCONFIG_PATH}"
+            sed -i '/CONFIG_MEMCG_KMEM/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_MEMCG_KMEM=y" >> "${DEFCONFIG_PATH}"
+
+            # Add ZRAM configuration explicitly 
+            sed -i '/CONFIG_ZRAM/d' "${DEFCONFIG_PATH}"
+            echo "CONFIG_ZRAM=y" >> "${DEFCONFIG_PATH}"
+
+            echo "Kcompressd is now enabled."
            fi
 
           
@@ -784,19 +794,19 @@ jobs:
           name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
           path: AnyKernel3_Package/
 
-      # - name: Display Final Kernel Config
-        # run: |
-          # echo "Finding and displaying the final .config file..."
-          # CONFIG_PATH=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
+      - name: Display Final Kernel Config
+        run: |
+          echo "Finding and displaying the final .config file..."
+          CONFIG_PATH=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
           
-          # if [[ -f "$CONFIG_PATH" ]]; then
-            # echo "--- START OF KERNEL CONFIG ---"
-            # cat "$CONFIG_PATH"
-            # echo "--- END OF KERNEL CONFIG ---"
-          # else
-            # echo "ERROR: .config file not found!"
-            # exit 1
-          # fi
+          if [[ -f "$CONFIG_PATH" ]]; then
+            echo "--- START OF KERNEL CONFIG ---"
+            cat "$CONFIG_PATH"
+            echo "--- END OF KERNEL CONFIG ---"
+          else
+            echo "ERROR: .config file not found!"
+            exit 1
+          fi
 
       - name: Clean up build artifacts to save space
         run: |
