@@ -1,4 +1,4 @@
-name: OnePlus 13 KernelSU Next v28
+name: OnePlus 13 Build v34
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +10,11 @@ on:
         - Self-Hosted
         - GitHub-Hosted (2-core)
         default: 'Self-Hosted'
+      KSU_META:
+        type: string
+        description: "Branch name/Custom version identifier for SukiSU Ultra (e.g., susfs-main/MyBuild)"
+        required: false
+        default: "susfs-main/Ehsan149"
       KERNEL_NAME:
         description: "Custom kernel name suffix (e.g., -By-Ehsan149-4k)"
         required: true
@@ -18,36 +23,11 @@ on:
         description: "Custom kernel build time (default: factory)"
         required: true
         default: '2024-12-17 23:36:49 UTC'
-      enable_adios:
-        description: "[EXPERIMENTAL] Enable ADIOS I/O Scheduler"
+      OPTIONAL_FEATURES:
+        description: 'Comma-separated list of optional features (e.g., ADIOS,LE9UO,LZ4KD,FENGCHI,ESIM,KPM,KCOMPRESSD)'
         required: false
-        default: true
-        type: boolean
-      enable_le9uo:
-        description: "[EXPERIMENTAL] Enable LE.9.0 Unofficial Patchset"
-        required: false
-        default: true
-        type: boolean
-      enable_feature_x: # KPM
-        description: "Enable KPM support"
-        required: false
-        default: false
-        type: boolean
-      enable_feature_y: # LZ4KD for ZRAM
-        description: "Enable LZ4KD compression for ZRAM (Kernel 6.6+)"
-        required: false
-        default: false
-        type: boolean
-      enable_feature_z: # FengChi driver
-        description: "Enable FengChi driver (sched_ext)"
-        required: false
-        default: true
-        type: boolean
-      enable_esim:
-        description: "Attempt to enable eSIM & Wireguard support (for Global devices)"
-        required: false
-        default: true
-        type: boolean
+        default: 'ADIOS,LE9UO,FENGCHI,ESIM' 
+        type: string
 
 jobs:
   build:
@@ -66,6 +46,18 @@ jobs:
       zip_name: ${{ steps.prepare_zip.outputs.zip_filename }}
 
     steps:
+      - name: Parse Optional Features 
+        run: |
+          OPT_FEATURES="${{ inputs.OPTIONAL_FEATURES }}"
+          echo "OPTIONAL_FEATURES: $OPT_FEATURES"
+          echo "ENABLE_ADIOS=$(echo $OPT_FEATURES | grep -qi 'ADIOS' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          echo "ENABLE_LE9UO=$(echo $OPT_FEATURES | grep -qi 'LE9UO' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          echo "ENABLE_KPM=$(echo $OPT_FEATURES | grep -qi 'KPM' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          echo "ENABLE_LZ4KD=$(echo $OPT_FEATURES | grep -qi 'LZ4KD' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          echo "ENABLE_FENGCHI=$(echo $OPT_FEATURES | grep -qi 'FENGCHI' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          echo "ENABLE_ESIM=$(echo $OPT_FEATURES | grep -qi 'ESIM' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+          # echo "ENABLE_KCOMPRESSD=$(echo $OPT_FEATURES | grep -qi 'KCOMPRESSD' && echo 'true' || echo 'false')" >> $GITHUB_ENV
+      
       - name: Install LVM2 for maximize-build-space
         if: ${{ inputs.RUNNER_TYPE != 'Self-Hosted' }}
         run: |
@@ -113,17 +105,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache jq
+          sudo apt-get update && sudo apt-get install -y python3 git curl patch ccache
 
       - name: Restore ccache
         uses: actions/cache@v3
         id: ccache
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-${{ github.sha }}
+          key: ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-${{ github.sha }}-C-11
           restore-keys: |
-            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-
-            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-
+            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-${{ github.ref }}-C-11
+            ccache-${{ inputs.RUNNER_TYPE }}-${{ env.FEIL }}-${{ env.KERNEL_VERSION }}-C-11
 
       - name: Setup ccache
         if: steps.ccache.outputs.cache-hit != 'true'
@@ -150,10 +142,6 @@ jobs:
           chmod a+x $GITHUB_WORKSPACE/bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
           echo "Repo tool installed from mirror."
-          # Clone patch repositories for KernelSU and SUSFS integration
-          git clone https://github.com/WildKernels/kernel_patches.git ${{github.workspace}}/kernel_patches --depth=1
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git ${{github.workspace}}/susfs4ksu
-          
 
       - name: Clone TheWildJames Patches Repo (for 69_hide_stuff.patch)
         run: |
@@ -170,149 +158,121 @@ jobs:
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
-      - name: Set up KernelSU Next
+      - name: Apply auth_qos Patch
+        run: |
+          set -e
+          # Ensure we are in the base directory of kernel_platform for patching
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          
+          echo "Applying auth_qos_manual_full.patch from your repository..."
+          
+          patch -p1 --ignore-whitespace < $GITHUB_WORKSPACE/auth_qos_manual5.patch
+          echo "auth_qos_manual_full.patch applied successfully."
+      
+      - name: Modify auth_qos Kconfig to remove RTG dependency
+        run: |
+          echo "Removing SCHED_RTG_FRAME dependency from auth_qos Kconfig..."
+          AUTH_KCONFIG_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers/auth_ctl/Kconfig"
+
+          if [ -f "$AUTH_KCONFIG_PATH" ]; then
+            sed -i '/depends on SCHED_RTG_FRAME/d' "$AUTH_KCONFIG_PATH"
+            echo "Dependency removed successfully."
+          else
+            echo "WARN: auth_ctl/Kconfig not found, skipping dependency removal."
+          fi
+      
+      - name: Set up SukiSU
         run: |
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v0.9.5" || { #
-            echo "::error::Failed to clone or set up KernelSU-Next"
-            exit 1
-          }
-          # git submodule update --init --recursive
-
-          # Calculate KSU_VERSION
-          cd ./KernelSU-Next/kernel
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-          sed -i "s/DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" Makefile
-          cd .. 
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          echo "KernelSU Next version set to ${KSU_VERSION}"
-   
-      - name: Set up susfs for KernelSU Next
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          SUSFS_BRANCH="gki-android15-6.6"
-          echo "Applying SUSFS patches using branch: $SUSFS_BRANCH..."
-          # Checkout correct SUSFS branch in the globally cloned susfs4ksu repo
-          cd ${{github.workspace}}/susfs4ksu
-          if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
-            git checkout "$SUSFS_BRANCH"
-          else
-            echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash for susfs4ksu. Please check the branch name."
-            exit 1
+          META="${{ github.event.inputs.KSU_META }}"
+          BRANCH_NAME="${META%%/*}"
+          CUSTOM_TAG="${META#*/}"
+          echo "Debug: SukiSU Branch Name: $BRANCH_NAME"
+          echo "Debug: SukiSU Custom Tag: $CUSTOM_TAG"
+          echo "CUSTOM_TAG=$CUSTOM_TAG" >> $GITHUB_ENV
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
+          cd ./KernelSU
+          KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
+            grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+          if [[ -z "$KSU_API_VERSION" || "$(printf '%s\n' "$KSU_API_VERSION" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
+            KSU_API_VERSION="3.1.7"
           fi
-          # Go back to kernel_platform directory where the source code is
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          
-          # Copy SUSFS base files from the checked out susfs4ksu branch
-          echo "INFO: Copying SUSFS base files from simonpunk/susfs4ksu..."
-          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
 
-          # Navigate into the KernelSU-Next directory to apply its specific SUSFS patches
-          cd ./KernelSU-Next
-          echo "Applying next SUSFS patches to KernelSU-Next source..."
-          # Get SUSFS version from header file (ensure susfs.h is copied correctly above in common)
-          susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
-          echo "SUSVER=$susfs_version" >> $GITHUB_ENV
-          echo "SusFS Version: $susfs_version"
-
-          # --- Apply the correct 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu (Repo B) ---
-          # This patch is directly from susfs4ksu/kernel_patches/KernelSU/ as in the new reference workflow.
-          ENABLE_KSU_SUSFS_PATCH="../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
-          
-          if [ -f "$ENABLE_KSU_SUSFS_PATCH" ]; then
-            cp "$ENABLE_KSU_SUSFS_PATCH" ./ # Copy to current dir for patching
-            echo "INFO: Attempting to apply 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu (6 days old)."
-            # Using fuzz=5 as per the reference, since this is the correct, newer patch.
-            patch -p1 --forward --fuzz=5 < 10_enable_susfs_for_ksu.patch || { 
-                echo "ERROR::10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu FAILED to apply. This is critical! Aborting build."; 
-                exit 1; 
-            }
-            echo "INFO: 10_enable_susfs_for_ksu.patch from simonpunk/susfs4ksu applied successfully."
+          GIT_HASH=$(git rev-parse --short HEAD)
+          if [[ -z "$CUSTOM_TAG" || "$CUSTOM_TAG" == "$BRANCH_NAME" ]]; then
+            KSU_VERSION_FULL="v$KSU_API_VERSION-$GIT_HASH@$BRANCH_NAME"
           else
-            echo "ERROR::10_enable_susfs_for_ksu.patch NOT FOUND at $ENABLE_KSU_SUSFS_PATCH in simonpunk/susfs4ksu. This patch is essential for Kernel 6.6. Aborting build."
-            exit 1
+            KSU_VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME[$GIT_HASH]"
           fi
           
-          # --- Re-introducing individual fix_*.c.patch files as seen in farrukh2002/kernel-builder ---
-          # This workflow explicitly applies these patches, suggesting they are still needed.
-          SUSFS_FIX_PATH="../../kernel_patches/next/susfs_fix_patches/$susfs_version" # From WildKernels/kernel_patches
           
-          FIX_PATCHES=(
-            "fix_apk_sign.c.patch"
-            "fix_core_hook.c.patch"
-            "fix_ksud.c.patch"
-            # The reference workflow doesn't explicitly list fix_rules.c.patch or fix_selinux.c.patch in this section.
-            # If your previous build showed these failing, you might need them.
-            # For now, let's stick to what the reference shows for minimal conflict.
-            # "fix_rules.c.patch"
-            # "fix_selinux.c.patch"
+          VERSION_DEFINITIONS=$(cat <<EOF
+          define get_ksu_version_full
+          $KSU_VERSION_FULL
+          endef
+
+          KSU_VERSION_API := KSU_API_VERSION
+          KSU_VERSION_FULL := $KSU_VERSION_FULL
+          EOF
           )
-          
-          for patch_file in "${FIX_PATCHES[@]}"; do
-            if [ -f "${SUSFS_FIX_PATH}/${patch_file}" ]; then
-              cp "${SUSFS_FIX_PATH}/${patch_file}" ./ # Copy patch to current dir
-              patch -p1 --forward --fuzz=3 < "${patch_file}" || echo "WARN: ${patch_file} failed or applied with issues."
-            else
-              echo "WARN: ${patch_file} not found in ${SUSFS_FIX_PATH}, skipping."
-            fi
-          done
 
-          # Create debug directory and copy ALL .rej files found in the ENTIRE workspace
-          mkdir -p $GITHUB_WORKSPACE/rej_files_for_debug
-          echo "INFO: Searching for and copying ALL .rej files in the entire workspace to debug folder..."
-          find $GITHUB_WORKSPACE -name "*.rej" -print0 | xargs -0 -I {} cp "{}" $GITHUB_WORKSPACE/rej_files_for_debug/ 2>/dev/null || echo "No .rej files found to copy or error during copy."
-          ls -l $GITHUB_WORKSPACE/rej_files_for_debug/ # List contents to confirm
-
-          # Go back to the 'common' directory within kernel_platform
-          cd ../common 
+          sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
+          sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
+          sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
           
-          echo "INFO: Applying final SUSFS kernel source patches..."
-          # Specific include fix for android15-6.6 (this was already there and should remain)
-          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
-              sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
-              echo "Added #include <trace/hooks/fs.h> to fs/namespace.c"
-          else
-              echo "Line '#include <trace/hooks/fs.h>' already present in fs/namespace.c. Skipping insert."
-          fi
-
-          # Your main SUSFS addition patch (50_add_susfs_in_gki-android15-6.6.patch from simonpunk/susfs4ksu)
-          patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || { echo "ERROR: 50_add_susfs_in_gki patch failed or applied with issues. Aborting build."; exit 1; }
+          awk -v def="$VERSION_DEFINITIONS" '
+            /REPO_OWNER :=/ {print; print def; inserted=1; next}
+            1
+            END {if (!inserted) print def}
+          ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
           
-          echo "Finished setting up susfs for KernelSU Next."
-      
-      - name: Apply Manual Hooks Patch 
+          KSU_VERSION=$(expr $(git rev-list --count main 2>/dev/null || echo 13000) + 10700)
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          echo "::group:: Final Makefile version info preview"
+          grep -A10 "REPO_OWNER" kernel/Makefile
+          grep "KSU_VERSION_FULL" kernel/Makefile
+          echo "::endgroup::"
+          
+      - name: Set up susfs
         run: |
           set -e
-          # Navigate to the common directory where KernelSU-Next and source files reside
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common 
-          
-          echo "Applying scope_min_manual_hooks_v1.4.patch..."
-          # Source for this patch is from WildKernels/kernel_patches
-          MANUAL_HOOKS_PATCH="$GITHUB_WORKSPACE/kernel_patches/next/scope_min_manual_hooks_v1.4.patch"
-
-          if [ -f "$MANUAL_HOOKS_PATCH" ]; then
-            cp "$MANUAL_HOOKS_PATCH" ./ # Copy patch to common directory
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch || echo "WARN: scope_min_manual_hooks_v1.4.patch failed or applied with issues."
-            echo "INFO: scope_min_manual_hooks_v1.4.patch applied."
-          else
-            echo "WARN: scope_min_manual_hooks_v1.4.patch not found at $MANUAL_HOOKS_PATCH, skipping."
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          SUSFS_CLONE_TARGET_REL="../susfs4ksu"
+          SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
+          SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
+          if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
+          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+          if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
+          PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch"
+          EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
+          if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
+            echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+            exit 1
           fi
-          
-      - name: Upload Patch Rejects for Debugging
-        if: always() # Use always() to ensure it runs even if previous steps fail
-        uses: actions/upload-artifact@v4
-        with:
-          name: susfs-patch-rejects
-          path: $GITHUB_WORKSPACE/rej_files_for_debug/ # Point to the directory where .rej files are moved
-          retention-days: 5 # Keep for 5 days for debugging
-          if-no-files-found: warn # Keep this to warn if no files are found, instead of failing
-          # No need for compression-level or overwrite unless you have specific requirements
-      
+          cp "${EXPECTED_PATCH_PATH}" ./common/
+          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
+          cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
+          cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
+          if ! ${{ env.ENABLE_LZ4KD == 'true' }}; then
+            echo "LZ4KD is disabled, copying lz4k_oplus."
+            cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
+          else
+            echo "LZ4KD is enabled, skipping lz4k_oplus to avoid potential conflict."
+          fi
+          cd ./common
+          echo "Applying compatibility fix to susfs patch..."
+          sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+          sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
+          patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
+          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./
+          patch -p1 -F 3 < syscall_hooks.patch
+          echo "Finished 'Set up susfs' step."
+
       - name: Apply HMBird GKI patch
         run: |
           set -e
@@ -388,7 +348,7 @@ jobs:
           echo "HMBird patch file created."
 
       - name: Add sched_ext (FengChi driver)
-        if: ${{ inputs.enable_feature_z == true }}
+        if: ${{ env.ENABLE_FENGCHI == 'true' }}
         run: |
          set -e
           echo "Adding sched_ext (FengChi driver)..."
@@ -398,7 +358,7 @@ jobs:
           rm -rf ./sched_ext_temp
 
       - name: Apply LZ4KD Patches for ZRAM (if enabled)
-        if: ${{ inputs.enable_feature_y == true }}
+        if: ${{ env.ENABLE_LZ4KD == 'true' }}
         run: |
           set -e
           echo "LZ4KD for ZRAM is enabled. Applying patch..."
@@ -497,7 +457,7 @@ jobs:
            
           fi
           
-          if ${{ inputs.enable_le9uo }}; then
+          if [ "${{ env.ENABLE_LE9UO }}" = "true" ]; then
             echo "Applying custom le9uo patch for kernel 6.6..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
             # Using our final, fixed patch
@@ -507,7 +467,7 @@ jobs:
             echo "workingset_protection enabled by default."
           fi
 
-          if ${{ inputs.enable_adios }}; then
+          if [ "${{ env.ENABLE_ADIOS }}" = "true" ]; then
              PATCH_FILE="$GITHUB_WORKSPACE/adios-standalone34.patch"
              if [ -f "$PATCH_FILE" ]; then
                 echo "Applying ADIOS patch..."
@@ -535,7 +495,8 @@ jobs:
           echo "Verification PASSED: Makefile is patched."
           echo " ADIOS patch successfully verified."
 
-      
+
+            
       - name: Add Kernel Configuration Settings and Custom Kernel Name
         run: |
           set -e
@@ -544,17 +505,17 @@ jobs:
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >>  "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_KPROBES_HOOK=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "${DEFCONFIG_PATH}"
@@ -581,7 +542,7 @@ jobs:
           if [ "${{ env.KERNEL_VERSION }}" != "5.10" ]; then
             echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> "${DEFCONFIG_PATH}"
-            if ${{ inputs.enable_feature_y }}; then 
+            if [ "${{ env.ENABLE_LZ4KD }}" = "true" ]; then 
               echo "CONFIG_CRYPTO_LZ4KD=y" >> "${DEFCONFIG_PATH}" 
               echo "# LZ4KD for ZRAM is enabled via feature flag" >> "${DEFCONFIG_PATH}"
               echo "CONFIG_ZRAM_DEF_COMP_LZ4=n" >> "${DEFCONFIG_PATH}" 
@@ -617,8 +578,26 @@ jobs:
           echo "CONFIG_RAMOOPS_DEFAULT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240" >> "${DEFCONFIG_PATH}"
 
+
+          # Enable the core dependency for RTG Authority
+          # START: New Kconfig entries for auth_qos
+          echo "# Huawei auth_qos" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_AUTHORITY_CTRL=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_QOS_CTRL=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_RTG_AUTHORITY=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_QOS_AUTHORITY=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_AUTH_QOS_DEBUG=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_QOS_POLICY_MAX_NR=20" >> "${DEFCONFIG_PATH}" 
+                   
+          # Add dependencies for QoS features (latency and provisioning)
+          echo "# QoS feature dependencies" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_TASK=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_BUCKETS_COUNT=20" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_UCLAMP_TASK_GROUP=y" >> "${DEFCONFIG_PATH}"
+          # END: New Kconfig entries for auth_qos
+          
           # Add ADIOS config if enabled
-          if [ "${{ inputs.enable_adios }}" = "true" ]; then
+          if [ "${{ env.ENABLE_ADIOS }}" = "true" ]; then
             echo "Setting ADIOS as default via Kconfig boolean..."
             # 1. Enable ADIOS scheduler
             sed -i '/CONFIG_MQ_IOSCHED_ADIOS/d' "${DEFCONFIG_PATH}"
@@ -651,14 +630,29 @@ jobs:
             echo "# AutoFDO (Feedback-Directed Optimization)" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_AUTOFDO_CLANG=y" >> "${DEFCONFIG_PATH}"
             
+          # Add Kcompressd-Unofficial config if enabled
+          # if [ "${{ env.ENABLE_KCOMPRESSD }}" = "true" ]; then
+            # echo "# Kcompressd-Unofficial" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_KCOMPRESSD=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_SWAP_ASYNC_IO=y" >> "${DEFCONFIG_PATH}"
+            # Add Zswap and MemCG related Kconfigs here
+            # echo "CONFIG_ZSWAP=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_ZPOOL=y" >> "${DEFCONFIG_PATH}"
+            # echo "CONFIG_CGROUP_MEM_RES_CTLR=y" >> "${DEFCONFIG_PATH}" # This is for memory cgroup controller
+            # echo "CONFIG_MEMCG_SWAP=y" >> "${DEFCONFIG_PATH}" # Enable swap support for memory cgroups
+            # echo "CONFIG_MEMCG_KMEM=y" >> "${DEFCONFIG_PATH}" # Enable kernel memory accounting for memory cgroups
+            # echo "Kcompressd-Unofficial is now enabled."
+          # fi
+
+          
           # Add KPM config if enabled
-          if ${{ inputs.enable_feature_x == true }}; then
+          if [ "${{ env.ENABLE_KPM }}" = "true" ]; then
             echo "# KPM Support" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_KPM=y" >> "${DEFCONFIG_PATH}"
           fi
           
           # Add eSIM config if enabled
-          if ${{ inputs.enable_esim }}; then
+          if [ "${{ env.ENABLE_ESIM }}" = "true" ]; then
             echo "# eSIM and Wireguard Dependencies" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_WIREGUARD=y" >> "${DEFCONFIG_PATH}"
             echo "CONFIG_INET=y" >> "${DEFCONFIG_PATH}" 
@@ -682,7 +676,7 @@ jobs:
           echo "CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
           echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\""
           
-          sudo sed -i '2s/check_defconfig//' ./common/build.config.gki
+          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -m "Update defconfig with all features and custom settings" --allow-empty || echo "No defconfig changes to commit."
 
@@ -713,12 +707,7 @@ jobs:
             echo "Ccache statistics after build:"
             ccache -s
 
-      - name: Clean up build artifacts to save space
-        run: |
-          echo "Cleaning up large build directories..."
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
-          df -h
+      
           
       - name: Make AnyKernel3 (Patch Image)
         run: |
@@ -739,18 +728,25 @@ jobs:
         run: |
          set -e
           cd $GITHUB_WORKSPACE
-                            
-          FINAL_ZIP_NAME="OnePlus_13_KSUNext_GKI_${{ env.KSUVER }}"
-          if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
-          if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
+          META="${{ github.event.inputs.KSU_META }}"
+          CUSTOM_TAG="${META#*/}"
+          SUKISU_VERSION_INFO="${{ env.KSU_API_VERSION }}_${{ env.KSUVER }}"
+          
+          FINAL_ZIP_NAME="OnePlus_13_SuKiSu_GKI_${SUKISU_VERSION_INFO}"
+          if ${{ env.ENABLE_ADIOS }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
+          if ${{ env.ENABLE_LE9UO }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_AutoFDO"; fi
-          if ${{ inputs.enable_feature_z }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"; fi
-          if ${{ inputs.enable_feature_y }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"; else FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"; fi
-          if ${{ inputs.enable_esim }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
+          if ${{ env.ENABLE_FENGCHI }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_FengChi"; fi
+          if ${{ env.ENABLE_LZ4KD }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4KD"; else FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LZ4"; fi
+          if ${{ env.ENABLE_ESIM }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_eSIM"; fi
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_BBR_ECN"
-          if ${{ inputs.enable_feature_x }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
-                      
+          if ${{ env.ENABLE_KPM }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KPM"; fi
+          # if ${{ env.ENABLE_KCOMPRESSD }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_KCOMPRESSD"; fi
+          
+          if [ -n "$CUSTOM_TAG" ]; then
+            FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_${CUSTOM_TAG,,}"
+          fi  
           FINAL_ZIP_NAME=$(echo "$FINAL_ZIP_NAME" | sed 's/__/_/g' | sed 's/^-//' | sed 's/_-_/-/g' | sed 's/\.zip$//i')
           FINAL_ZIP_NAME="${FINAL_ZIP_NAME}.zip"
           echo "Generated ZIP filename: ${FINAL_ZIP_NAME}"
@@ -771,35 +767,33 @@ jobs:
           
         env:
           KSUVER: ${{ env.KSUVER }}
-          
-      - name: Download and Add Pre-built SUSFS Module
-        run: |
-          echo "INFO: Downloading latest pre-built susfs module..."
-          LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
-            jq -r '.workflow_runs[] | select(.head_branch == "v1.5.2+") | .id' | head -n 1)
-          
-          if [ -z "$LATEST_RUN_ID" ]; then
-            echo "WARN: No successful pre-built susfs module found. Skipping."
-          else
-            ARTIFACT_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$LATEST_RUN_ID/artifacts" | \
-              jq -r '.artifacts[0].archive_download_url')
-          
-            if [ -n "$ARTIFACT_URL" ]; then
-              echo "INFO: Found artifact. Downloading..."
-              curl -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -o ksu_module_susfs.zip "$ARTIFACT_URL"
-             
-              cp ksu_module_susfs.zip ./AnyKernel3_Package/
-              echo "INFO: SUSFS module added to the package successfully."
-            else
-              echo "WARN: Failed to get artifact URL for susfs module."
-            fi
-          fi    
+          KSU_API_VERSION: ${{ env.KSU_API_VERSION }}
+          CUSTOM_TAG: ${{ env.CUSTOM_TAG }}
           
       - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.prepare_zip.outputs.zip_artifact_name }}
           path: AnyKernel3_Package/
+
+      # - name: Display Final Kernel Config
+        # run: |
+          # echo "Finding and displaying the final .config file..."
+          # CONFIG_PATH=$(find ${{ github.workspace }}/kernel_workspace/kernel_platform/out -type f -name ".config" | head -n 1)
           
+          # if [[ -f "$CONFIG_PATH" ]]; then
+            # echo "--- START OF KERNEL CONFIG ---"
+            # cat "$CONFIG_PATH"
+            # echo "--- END OF KERNEL CONFIG ---"
+          # else
+            # echo "ERROR: .config file not found!"
+            # exit 1
+          # fi
+
+      - name: Clean up build artifacts to save space
+        run: |
+           echo "Cleaning up large build directories..."
+           rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out
+           rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/.git
+           df -h
+           
