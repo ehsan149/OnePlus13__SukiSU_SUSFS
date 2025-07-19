@@ -95,14 +95,6 @@ jobs:
           sudo rm -rf /usr/share/swift
           df -h    
 
-      - name: Clean Bazel Cache
-        run: |
-          echo "Cleaning Bazel cache completely..."
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          rm -rf out
-          rm -rf ${{ env.CCACHE_DIR }}
-          echo "Bazel cache cleaned."
-          
       - name: Check out repository code
         uses: actions/checkout@v4
 
@@ -166,6 +158,14 @@ jobs:
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
+      - name: Clean Bazel Cache
+        run: |
+          echo "Cleaning Bazel cache completely..."
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          rm -rf out
+          rm -rf ${{ env.CCACHE_DIR }}
+          echo "Bazel cache cleaned."
+          
       - name: Apply auth_qos Patch
         run: |
           set -e
