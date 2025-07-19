@@ -706,6 +706,24 @@ jobs:
           echo "Finished applying custom drivers and committing changes."
 
 
+      - name: Copy Generated .config for Debugging
+        run: |
+            set -e
+            echo "Attempting to copy the generated .config file for debugging..."
+            # Assuming the .config is generated in common/arch/arm64/configs/gki_defconfig
+            # after the previous step has modified it.
+            cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/arch/arm64/configs/gki_defconfig $GITHUB_WORKSPACE/final_gki_defconfig.config
+            echo "Copied gki_defconfig to $GITHUB_WORKSPACE/final_gki_defconfig.config"
+            echo "--- Content of final_gki_defconfig.config ---"
+            cat $GITHUB_WORKSPACE/final_gki_defconfig.config
+            echo "--- End of Content ---"
+        
+      - name: Upload Debug Config
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-kernel-config-debug
+          path: ${{ github.workspace }}/final_gki_defconfig.config
+      
       - name: Set Kernel build timestamp
         run: |
           export SOURCE_DATE_EPOCH=$(date -d "${{ inputs.KERNEL_TIME }}" +%s)
