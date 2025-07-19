@@ -97,12 +97,10 @@ jobs:
 
       - name: Clean Bazel Cache
         run: |
-          # Ensure we are in kernel_workspace/kernel_platform/ for bazel clean to work correctly
-          # or run it from the root of the runner's workspace
           echo "Cleaning Bazel cache completely..."
-          rm -rf $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/out # Remove the output directory first
-          rm -rf /home/runner/.bazel/ # Remove Bazel's internal cache
-          tools/bazel clean --expunge # This command is executed from the root of the repo checkout
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          rm -rf out
+          rm -rf ${{ env.CCACHE_DIR }}
           echo "Bazel cache cleaned."
           
       - name: Check out repository code
