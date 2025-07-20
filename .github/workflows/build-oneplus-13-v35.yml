@@ -510,7 +510,7 @@ jobs:
           set -e
           echo "Applying Kcompressd manual patch..."
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          patch -p1 < $GITHUB_WORKSPACE/kcompressd_manual15.patch
+          patch -p1 < $GITHUB_WORKSPACE/kcompressd_manual16.patch
           echo "Successfully applied Kcompressd manual patch."
           
       - name: Verify Patch Application
