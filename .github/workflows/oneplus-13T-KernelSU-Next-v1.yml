@@ -730,7 +730,7 @@ jobs:
          set -e
           cd $GITHUB_WORKSPACE
           
-          FINAL_ZIP_NAME="OnePlus_13_KSUNext_GKI_${{ env.KSUVER }}"
+          FINAL_ZIP_NAME="OnePlus_13T_KSUNext_GKI_${{ env.KSUVER }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
