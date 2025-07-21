@@ -211,8 +211,8 @@ jobs:
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
           echo "KernelSU Next version set to ${KSU_VERSION}"
-          sed -i 's/KSU_META ""/KSU_META "${{ inputs.KSU_META }}"/' kernel/Makefile
-          echo "KernelSU Next version set to ${KSU_VERSION} with meta: ${{ inputs.KSU_META }}"
+         
+          
           
       - name: Set up susfs for KernelSU Next
         run: |
@@ -731,8 +731,8 @@ jobs:
         run: |
          set -e
           cd $GITHUB_WORKSPACE
-          KSU_META_FILENAME=$(echo "${{ inputs.KSU_META }}" | sed 's/\//-/g')
-          FINAL_ZIP_NAME="OnePlus_13T_KSUNext_GKI_${{ env.KSUVER }}_${KSU_META_FILENAME}"
+          
+          FINAL_ZIP_NAME="OnePlus_13T_KSUNext_GKI_${{ env.KSUVER }}"
           if ${{ inputs.enable_adios }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_ADIOS"; fi
           if ${{ inputs.enable_le9uo }}; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_LE9UO"; fi
           if true; then FINAL_ZIP_NAME="${FINAL_ZIP_NAME}_Polly"; fi
