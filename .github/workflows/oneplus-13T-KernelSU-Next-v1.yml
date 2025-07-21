@@ -523,10 +523,14 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
+          echo "Applying robust KernelSU defconfig settings..."
+          sed -i '/CONFIG_KSU_KPROBES_HOOK/d' "${DEFCONFIG_PATH}"
+          sed -i '/CONFIG_KSU_MANUAL_HOOK/d' "${DEFCONFIG_PATH}"
           
           echo "CONFIG_KSU=y" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_KPROBES_HOOK=n" >> "${DEFCONFIG_PATH}"
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "${DEFCONFIG_PATH}" 
           echo "CONFIG_KSU_SUSFS=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "${DEFCONFIG_PATH}"
@@ -681,7 +685,7 @@ jobs:
           echo "CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\"" >> "${DEFCONFIG_PATH}"
           echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ inputs.KERNEL_NAME }}\""
           
-          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
+          sudo sed -i '2s/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -m "Update defconfig with all features and custom settings" --allow-empty || echo "No defconfig changes to commit."
 
