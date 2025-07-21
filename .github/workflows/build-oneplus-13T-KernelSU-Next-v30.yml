@@ -191,8 +191,9 @@ jobs:
           
           
           # Copy SUSFS base files and main addition patch from the checked out susfs4ksu branch
-          echo "Applying SUSFS patches..."
-          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
+          PATCH_FILENAME="50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch"
+          echo "==> Applying SUSFS base files using patch: $PATCH_FILENAME"
+          cp ../../susfs4ksu/kernel_patches/$PATCH_FILENAME" ./common/
           cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
@@ -247,7 +248,7 @@ jobs:
             echo "Applied include fix to fs/namespace.c for Android 15 / Kernel 6.6"
           fi
 
-          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || { echo "ERROR: 50_add_susfs_in_gki patch failed."; exit 1; }
+          patch -p1 < "$PATCH_FILENAME" || { echo "ERROR: Patching with $PATCH_FILENAME failed."; exit 1; }
           echo "Finished setting up susfs for KernelSU Next."
           
       - name: Apply KernelSU Manual Hooks
