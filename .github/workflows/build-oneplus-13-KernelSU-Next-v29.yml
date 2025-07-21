@@ -197,7 +197,7 @@ jobs:
           echo "INFO: Applying patches with error suppression (|| true)..."
           cd ./KernelSU-Next
 
-          patch -p1 < --forward < 0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch || true
+          patch -p1 --forward < 0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch || true
           cd ../common
           echo "INFO: Applying final patches to kernel source..."
           
