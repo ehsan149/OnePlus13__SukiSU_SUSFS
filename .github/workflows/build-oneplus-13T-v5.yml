@@ -171,6 +171,14 @@ jobs:
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
+      - name: Apply OnePlus 13S (CPH2723) Compatibility Patch
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          echo "Applying patch to add OnePlus 13S support..."
+          curl -L https://github.com/schqiushui/android_kernel_common_oneplus_sm8750/commit/d288bf058d4f667ca715d92156107e5e596dc0f2.patch | patch -p1
+          
+      
       - name: Apply auth_qos Patch
         run: |
           set -e
